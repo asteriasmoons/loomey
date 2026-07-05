@@ -6,8 +6,49 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CF2171A92FE377EE00060F38 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = CF2171A82FE377EE00060F38 /* SocketIO */; };
+		CF2171D82FE6DFAB00060F38 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = CF2171D72FE6DFAB00060F38 /* ReadiumAdapterGCDWebServer */; };
+		CF2171DA2FE6DFAB00060F38 /* ReadiumAdapterLCPSQLite in Frameworks */ = {isa = PBXBuildFile; productRef = CF2171D92FE6DFAB00060F38 /* ReadiumAdapterLCPSQLite */; };
+		CF2171DC2FE6DFAB00060F38 /* ReadiumLCP in Frameworks */ = {isa = PBXBuildFile; productRef = CF2171DB2FE6DFAB00060F38 /* ReadiumLCP */; };
+		CF2171DE2FE6DFAB00060F38 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = CF2171DD2FE6DFAB00060F38 /* ReadiumNavigator */; };
+		CF2171E02FE6DFAB00060F38 /* ReadiumOPDS in Frameworks */ = {isa = PBXBuildFile; productRef = CF2171DF2FE6DFAB00060F38 /* ReadiumOPDS */; };
+		CF2171E22FE6DFAB00060F38 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = CF2171E12FE6DFAB00060F38 /* ReadiumShared */; };
+		CF2171E42FE6DFAB00060F38 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = CF2171E32FE6DFAB00060F38 /* ReadiumStreamer */; };
+		CFBD97BF2FC1E7EF003F1EAC /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CFBD97BE2FC1E7EF003F1EAC /* WidgetKit.framework */; };
+		CFBD97C12FC1E7EF003F1EAC /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CFBD97C02FC1E7EF003F1EAC /* SwiftUI.framework */; };
+		CFBD97D22FC1E7F2003F1EAC /* LumeyWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CFBD97BC2FC1E7EF003F1EAC /* LumeyWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CFBD97D02FC1E7F2003F1EAC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CFBD970F2FC0DD3E003F1EAC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CFBD97BB2FC1E7EF003F1EAC;
+			remoteInfo = LumeyWidgetsExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		CFBD97D72FC1E7F2003F1EAC /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				CFBD97D22FC1E7F2003F1EAC /* LumeyWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		CFBD97172FC0DD3E003F1EAC /* Lumey.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lumey.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CFBD97BC2FC1E7EF003F1EAC /* LumeyWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LumeyWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CFBD97BE2FC1E7EF003F1EAC /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		CFBD97C02FC1E7EF003F1EAC /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -15,6 +56,20 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+			);
+			target = CFBD97162FC0DD3E003F1EAC /* Lumey */;
+		};
+		CFBD97D62FC1E7F2003F1EAC /* Exceptions for "LumeyWidgets" folder in "LumeyWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = CFBD97BB2FC1E7EF003F1EAC /* LumeyWidgetsExtension */;
+		};
+		CFBD97DD2FC1EAAE003F1EAC /* Exceptions for "LumeyWidgets" folder in "Lumey" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				LumeyWidgetsLiveActivity.swift,
 			);
 			target = CFBD97162FC0DD3E003F1EAC /* Lumey */;
 		};
@@ -29,6 +84,15 @@
 			path = Lumey;
 			sourceTree = "<group>";
 		};
+		CFBD97C22FC1E7F0003F1EAC /* LumeyWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CFBD97DD2FC1EAAE003F1EAC /* Exceptions for "LumeyWidgets" folder in "Lumey" target */,
+				CFBD97D62FC1E7F2003F1EAC /* Exceptions for "LumeyWidgets" folder in "LumeyWidgetsExtension" target */,
+			);
+			path = LumeyWidgets;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -36,6 +100,23 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CF2171E02FE6DFAB00060F38 /* ReadiumOPDS in Frameworks */,
+				CF2171E42FE6DFAB00060F38 /* ReadiumStreamer in Frameworks */,
+				CF2171DC2FE6DFAB00060F38 /* ReadiumLCP in Frameworks */,
+				CF2171E22FE6DFAB00060F38 /* ReadiumShared in Frameworks */,
+				CF2171A92FE377EE00060F38 /* SocketIO in Frameworks */,
+				CF2171D82FE6DFAB00060F38 /* ReadiumAdapterGCDWebServer in Frameworks */,
+				CF2171DA2FE6DFAB00060F38 /* ReadiumAdapterLCPSQLite in Frameworks */,
+				CF2171DE2FE6DFAB00060F38 /* ReadiumNavigator in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CFBD97B92FC1E7EF003F1EAC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CFBD97C12FC1E7EF003F1EAC /* SwiftUI.framework in Frameworks */,
+				CFBD97BF2FC1E7EF003F1EAC /* WidgetKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -46,6 +127,8 @@
 			isa = PBXGroup;
 			children = (
 				CFBD97192FC0DD3E003F1EAC /* Lumey */,
+				CFBD97C22FC1E7F0003F1EAC /* LumeyWidgets */,
+				CFBD97BD2FC1E7EF003F1EAC /* Frameworks */,
 				CFBD97182FC0DD3E003F1EAC /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,8 +137,18 @@
 			isa = PBXGroup;
 			children = (
 				CFBD97172FC0DD3E003F1EAC /* Lumey.app */,
+				CFBD97BC2FC1E7EF003F1EAC /* LumeyWidgetsExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		CFBD97BD2FC1E7EF003F1EAC /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				CFBD97BE2FC1E7EF003F1EAC /* WidgetKit.framework */,
+				CFBD97C02FC1E7EF003F1EAC /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -68,20 +161,52 @@
 				CFBD97132FC0DD3E003F1EAC /* Sources */,
 				CFBD97142FC0DD3E003F1EAC /* Frameworks */,
 				CFBD97152FC0DD3E003F1EAC /* Resources */,
+				CFBD97D72FC1E7F2003F1EAC /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				CFBD97D12FC1E7F2003F1EAC /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				CFBD97192FC0DD3E003F1EAC /* Lumey */,
 			);
 			name = Lumey;
 			packageProductDependencies = (
+				CF2171A82FE377EE00060F38 /* SocketIO */,
+				CF2171D72FE6DFAB00060F38 /* ReadiumAdapterGCDWebServer */,
+				CF2171D92FE6DFAB00060F38 /* ReadiumAdapterLCPSQLite */,
+				CF2171DB2FE6DFAB00060F38 /* ReadiumLCP */,
+				CF2171DD2FE6DFAB00060F38 /* ReadiumNavigator */,
+				CF2171DF2FE6DFAB00060F38 /* ReadiumOPDS */,
+				CF2171E12FE6DFAB00060F38 /* ReadiumShared */,
+				CF2171E32FE6DFAB00060F38 /* ReadiumStreamer */,
 			);
 			productName = Lumey;
 			productReference = CFBD97172FC0DD3E003F1EAC /* Lumey.app */;
 			productType = "com.apple.product-type.application";
+		};
+		CFBD97BB2FC1E7EF003F1EAC /* LumeyWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CFBD97D32FC1E7F2003F1EAC /* Build configuration list for PBXNativeTarget "LumeyWidgetsExtension" */;
+			buildPhases = (
+				CFBD97B82FC1E7EF003F1EAC /* Sources */,
+				CFBD97B92FC1E7EF003F1EAC /* Frameworks */,
+				CFBD97BA2FC1E7EF003F1EAC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CFBD97C22FC1E7F0003F1EAC /* LumeyWidgets */,
+			);
+			name = LumeyWidgetsExtension;
+			packageProductDependencies = (
+			);
+			productName = LumeyWidgetsExtension;
+			productReference = CFBD97BC2FC1E7EF003F1EAC /* LumeyWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -96,6 +221,9 @@
 					CFBD97162FC0DD3E003F1EAC = {
 						CreatedOnToolsVersion = 26.5;
 					};
+					CFBD97BB2FC1E7EF003F1EAC = {
+						CreatedOnToolsVersion = 26.5;
+					};
 				};
 			};
 			buildConfigurationList = CFBD97122FC0DD3E003F1EAC /* Build configuration list for PBXProject "Lumey" */;
@@ -107,18 +235,30 @@
 			);
 			mainGroup = CFBD970E2FC0DD3E003F1EAC;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CF2171A72FE377EE00060F38 /* XCRemoteSwiftPackageReference "socket" */,
+				CF2171D62FE6DFAB00060F38 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CFBD97182FC0DD3E003F1EAC /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				CFBD97162FC0DD3E003F1EAC /* Lumey */,
+				CFBD97BB2FC1E7EF003F1EAC /* LumeyWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		CFBD97152FC0DD3E003F1EAC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CFBD97BA2FC1E7EF003F1EAC /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +275,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CFBD97B82FC1E7EF003F1EAC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		CFBD97D12FC1E7F2003F1EAC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CFBD97BB2FC1E7EF003F1EAC /* LumeyWidgetsExtension */;
+			targetProxy = CFBD97D02FC1E7F2003F1EAC /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		CFBD97262FC0DD40003F1EAC /* Debug */ = {
@@ -143,6 +298,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Lumey/Lumey.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -163,12 +319,16 @@
 				PRODUCT_BUNDLE_IDENTIFIER = im.lystaria.Lumey;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -177,6 +337,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Lumey/Lumey.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -197,12 +358,16 @@
 				PRODUCT_BUNDLE_IDENTIFIER = im.lystaria.Lumey;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -327,6 +492,66 @@
 			};
 			name = Release;
 		};
+		CFBD97D42FC1E7F2003F1EAC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = PLRRW8XCVU;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LumeyWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = LumeyWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = im.lystaria.Lumey.LumeyWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CFBD97D52FC1E7F2003F1EAC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = PLRRW8XCVU;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LumeyWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = LumeyWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = im.lystaria.Lumey.LumeyWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -348,7 +573,78 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		CFBD97D32FC1E7F2003F1EAC /* Build configuration list for PBXNativeTarget "LumeyWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CFBD97D42FC1E7F2003F1EAC /* Debug */,
+				CFBD97D52FC1E7F2003F1EAC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CF2171A72FE377EE00060F38 /* XCRemoteSwiftPackageReference "socket" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/socketio/socket.io-client-swift";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+		CF2171D62FE6DFAB00060F38 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/readium/swift-toolkit";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CF2171A82FE377EE00060F38 /* SocketIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CF2171A72FE377EE00060F38 /* XCRemoteSwiftPackageReference "socket" */;
+			productName = SocketIO;
+		};
+		CF2171D72FE6DFAB00060F38 /* ReadiumAdapterGCDWebServer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CF2171D62FE6DFAB00060F38 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumAdapterGCDWebServer;
+		};
+		CF2171D92FE6DFAB00060F38 /* ReadiumAdapterLCPSQLite */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CF2171D62FE6DFAB00060F38 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumAdapterLCPSQLite;
+		};
+		CF2171DB2FE6DFAB00060F38 /* ReadiumLCP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CF2171D62FE6DFAB00060F38 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumLCP;
+		};
+		CF2171DD2FE6DFAB00060F38 /* ReadiumNavigator */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CF2171D62FE6DFAB00060F38 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumNavigator;
+		};
+		CF2171DF2FE6DFAB00060F38 /* ReadiumOPDS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CF2171D62FE6DFAB00060F38 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumOPDS;
+		};
+		CF2171E12FE6DFAB00060F38 /* ReadiumShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CF2171D62FE6DFAB00060F38 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumShared;
+		};
+		CF2171E32FE6DFAB00060F38 /* ReadiumStreamer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CF2171D62FE6DFAB00060F38 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumStreamer;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CFBD970F2FC0DD3E003F1EAC /* Project object */;
 }

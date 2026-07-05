@@ -1,0 +1,434 @@
+//
+//  ChallengesView.swift
+//  Lumey
+//
+
+import SwiftUI
+import SwiftData
+
+struct ChallengesView: View {
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var appState: AppState
+
+    @Query(sort: \ReadingChallenge.createdDate)
+    private var allChallenges: [ReadingChallenge]
+
+    @Query(sort: \ChallengeEntry.startDate, order: .reverse)
+    private var allEntries: [ChallengeEntry]
+    
+    @Query(sort: \ChallengeSubmission.submittedDate, order: .reverse)
+    private var allSubmissions: [ChallengeSubmission]
+    
+    @Query(sort: \ChallengeUserProfile.username)
+    private var allProfiles: [ChallengeUserProfile]
+
+    @State private var selectedCategory: ChallengeCategory?
+    @State private var selectedChallenge: ReadingChallenge?
+    @State private var searchText = ""
+    @State private var showingProfile = false
+    @State private var showingLeaderboard = false
+    @State private var showingFeedRoute = false
+    @State private var showingCreateFeedPost = false
+
+    private var currentUserID: String {
+        appState.currentAppleUserId ?? "local-user"
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LumeyBackground()
+                    .ignoresSafeArea()
+                
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: LSpacing.sectionGap) {
+                        headerSection
+                        
+                        if let featured = featuredChallenge {
+                            featuredSection(featured)
+                        }
+                        
+                        if !weeklyChallenges.isEmpty {
+                            weeklySection
+                        }
+                        
+                        if !activeChallenges.isEmpty {
+                            activeSection
+                        }
+                        
+                        categorySection
+                        
+                        allChallengesSection
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 6)
+                    .padding(.bottom, 34)
+                }
+            }
+            .task {
+                seedIfNeeded()
+            }
+            .sheet(item: $selectedChallenge) { challenge in
+                ChallengeDetailView(challenge: challenge)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.hidden)
+            }
+            .sheet(isPresented: $showingProfile) {
+                ChallengeUserProfileView(
+                    profile: currentChallengeProfile
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+            }
+            .sheet(isPresented: $showingLeaderboard) {
+                if let challenge = featuredChallenge ?? allChallenges.first {
+                    ChallengeLeaderboardView(
+                        challenge: challenge,
+                        submissions: allSubmissions.filter { $0.challengeID == challenge.id },
+                        profiles: allProfiles
+                    )
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.hidden)
+                }
+            }
+            .navigationDestination(isPresented: $showingFeedRoute) {
+                ChallengesFeedView()
+                    .toolbar(.hidden, for: .navigationBar)
+            }
+        }
+    }
+
+    private var currentChallengeProfile: ChallengeUserProfile {
+        if let existing = allProfiles.first(where: { $0.userID == currentUserID }) {
+            return existing
+        }
+
+        let profile = ChallengeUserProfile(
+            userID: currentUserID,
+            username: "Reader",
+            avatarName: nil,
+            bio: nil,
+            favoriteGenre: nil
+        )
+
+        modelContext.insert(profile)
+        try? modelContext.save()
+
+        return profile
+    }
+
+    // MARK: - Sections
+
+    private var headerSection: some View {
+        HStack(alignment: .top) {
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Challenges")
+                    .font(.system(size: 32, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("Join reading events and earn points")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(LColors.textSecondary)
+            }
+
+            Spacer()
+
+            Button {
+                showingProfile = true
+            } label: {
+                LumeyUserAvatarView(
+                    avatarURL: currentChallengeProfile.avatarURL,
+                    avatarName: currentChallengeProfile.avatarName,
+                    size: 42,
+                    iconSize: 20
+                )
+                .background(
+                    Circle()
+                        .fill(LColors.bg)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(LGradients.header, lineWidth: 1.2)
+                        )
+                        .shadow(color: LColors.gradientBlue.opacity(0.18), radius: 12, y: 6)
+                )
+            }
+            .buttonStyle(.plain)
+            
+            Button {
+                showingFeedRoute = true
+            } label: {
+                Image("socialchat")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+                    .foregroundStyle(LGradients.header)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        Circle()
+                            .fill(LColors.bg)
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(LGradients.header, lineWidth: 1.2)
+                            )
+                            .shadow(color: LColors.gradientBlue.opacity(0.18), radius: 12, y: 6)
+                    )
+            }
+            .buttonStyle(.plain)
+            
+            Button {
+                showingLeaderboard = true
+            } label: {
+                Image("baraward")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+                    .foregroundStyle(LGradients.header)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        Circle()
+                            .fill(LColors.bg)
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(LGradients.header, lineWidth: 1.2)
+                            )
+                            .shadow(color: LColors.gradientBlue.opacity(0.18), radius: 12, y: 6)
+                    )
+            }
+            .buttonStyle(.plain)
+            
+        }
+    }
+
+    private func featuredSection(_ challenge: ReadingChallenge) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Featured Challenge")
+
+            Button {
+                selectedChallenge = challenge
+            } label: {
+                GlassCard {
+                    HStack(spacing: 14) {
+                        Image(challenge.iconName)
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 36, height: 36)
+                            .foregroundStyle(LGradients.header)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Text(challenge.title)
+                                    .font(.system(size: 17, weight: .black, design: .rounded))
+                                    .foregroundStyle(.white)
+
+                                featuredBadge
+                            }
+
+                            Text(challenge.challengeDescription)
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(LColors.textSecondary)
+                                .lineLimit(2)
+
+                            HStack(spacing: 12) {
+                                pointsBadge(challenge.points)
+                                durationBadge(challenge.displayDuration)
+                            }
+                            .padding(.top, 4)
+                        }
+
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var weeklySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Weekly Challenges")
+
+            ForEach(weeklyChallenges) { challenge in
+                Button {
+                    selectedChallenge = challenge
+                } label: {
+                    ChallengeCardView(
+                        challenge: challenge,
+                        entry: entryFor(challenge),
+                        badgeType: .weekly
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var activeSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Your Active Challenges")
+
+            ForEach(activeChallenges) { entry in
+                if let challenge = challenge(for: entry.challengeID) {
+                    Button {
+                        selectedChallenge = challenge
+                    } label: {
+                        ChallengeCardView(
+                            challenge: challenge,
+                            entry: entry,
+                            badgeType: .active
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var categorySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Categories")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(ChallengeCategory.allCases) { category in
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                selectedCategory = selectedCategory == category ? nil : category
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(category.iconName)
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 16, height: 16)
+
+                                Text(category.displayName)
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                            }
+                            .foregroundStyle(selectedCategory == category ? .white : LColors.textSecondary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(selectedCategory == category ? AnyShapeStyle(LGradients.header) : AnyShapeStyle(LColors.glassSurface2))
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .strokeBorder(
+                                        selectedCategory == category
+                                            ? AnyShapeStyle(Color.clear)
+                                            : AnyShapeStyle(LColors.glassBorder),
+                                        lineWidth: 1
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private var allChallengesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle(selectedCategory?.displayName ?? "All Challenges")
+
+            ForEach(filteredChallenges) { challenge in
+                Button {
+                    selectedChallenge = challenge
+                } label: {
+                    ChallengeCardView(
+                        challenge: challenge,
+                        entry: entryFor(challenge),
+                        badgeType: nil
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private var featuredChallenge: ReadingChallenge? {
+        allChallenges.first(where: { $0.isFeatured })
+    }
+
+    private var weeklyChallenges: [ReadingChallenge] {
+        allChallenges.filter { $0.isWeekly }
+    }
+
+    private var activeChallenges: [ChallengeEntry] {
+        allEntries.filter { $0.userID == currentUserID && $0.isActive }
+    }
+
+    private var filteredChallenges: [ReadingChallenge] {
+        if let category = selectedCategory {
+            return allChallenges.filter { $0.category == category }
+        }
+        return allChallenges
+    }
+
+    private func entryFor(_ challenge: ReadingChallenge) -> ChallengeEntry? {
+        allEntries.first(where: { $0.challengeID == challenge.id && $0.userID == currentUserID })
+    }
+
+    private func challenge(for id: UUID) -> ReadingChallenge? {
+        allChallenges.first(where: { $0.id == id })
+    }
+
+    private func seedIfNeeded() {
+        let manager = ChallengeManager(modelContext: modelContext)
+        manager.seedChallengesIfNeeded()
+    }
+
+    // MARK: - Reusable Components
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 20, weight: .black, design: .rounded))
+            .foregroundStyle(.white)
+    }
+
+    private var featuredBadge: some View {
+        Text("FEATURED")
+            .font(.system(size: 9, weight: .black, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(LGradients.header)
+            )
+    }
+
+    private func pointsBadge(_ points: Int) -> some View {
+        HStack(spacing: 4) {
+            Image("starwavy")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 10, height: 10)
+            Text("\(points) pts")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(LColors.gradientYellow)
+    }
+
+    private func durationBadge(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image("clockfill")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 10, height: 10)
+            Text(text)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(LColors.textSecondary)
+    }
+}

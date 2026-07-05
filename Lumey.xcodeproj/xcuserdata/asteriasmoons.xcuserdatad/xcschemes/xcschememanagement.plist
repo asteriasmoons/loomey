@@ -7,7 +7,25 @@
 		<key>Lumey.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
+			<integer>1</integer>
+		</dict>
+		<key>LumeyWidgetsExtension.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
 			<integer>0</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>CFBD97162FC0DD3E003F1EAC</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>CFBD97BB2FC1E7EF003F1EAC</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

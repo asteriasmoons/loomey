@@ -1,0 +1,433 @@
+//
+//  BookSearchSheet.swift
+//  Lumey
+//
+
+import SwiftData
+import SwiftUI
+
+struct BookSearchSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
+    @Query(sort: \Book.lastUpdated, order: .reverse)
+    private var books: [Book]
+
+    @State private var query = ""
+    @State private var results: [BookSearchResult] = []
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var addedBookKeys: Set<String> = []
+
+    @State private var bookToEditAfterAdd: Book?
+    @State private var showEditBookAfterAdd = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LumeyBackground()
+
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        headerSection
+                        searchCard
+
+                        if isLoading {
+                            ProgressView()
+                                .padding(.top, 30)
+                        } else if let errorMessage {
+                            Text(errorMessage)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.top, 20)
+                        } else if results.isEmpty {
+                            emptyState
+                        } else {
+                            resultsList
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 18)
+                    .padding(.bottom, 40)
+                }
+            }
+            .navigationBarHidden(true)
+            .sheet(isPresented: $showEditBookAfterAdd) {
+                if let bookToEditAfterAdd {
+                    AddEditBookSheet(book: bookToEditAfterAdd) { _ in }
+                        .presentationDetents([.large])
+                        .presentationDragIndicator(.hidden)
+                }
+            }
+        }
+    }
+
+    private var headerSection: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Book Search")
+                    .font(.system(size: 30, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("Search for a book, view its details, then add it directly to your library.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+            }
+
+            Spacer(minLength: 12)
+
+            Button {
+                dismiss()
+            } label: {
+                Image("xmarkwavy")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+                    .foregroundStyle(LGradients.header)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        Circle()
+                            .fill(LColors.bg)
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(LGradients.header, lineWidth: 1.2)
+                            )
+                            .shadow(color: LColors.gradientBlue.opacity(0.18), radius: 12, y: 6)
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 10)
+    }
+
+    private var searchCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 14) {
+                TextField("Fourth Wing, Rebecca Yarros, ISBN...", text: $query)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .padding(14)
+                    .background(.white.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                Button {
+                    Task {
+                        await searchBooks()
+                    }
+                } label: {
+                    Text(isLoading ? "Searching..." : "Search Books")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            LinearGradient(
+                                colors: [
+                                    LColors.gradientBlue,
+                                    LColors.gradientPurple,
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .foregroundStyle(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .disabled(isLoading || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .opacity(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.55 : 1)
+            }
+            .padding(16)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image("searchwavy")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 34, height: 34)
+                .foregroundStyle(.secondary)
+
+            Text("No search results yet")
+                .font(.headline)
+
+            Text("Search by title, author, or ISBN to find books from Open Library and Google Books.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.top, 40)
+    }
+
+    private var resultsList: some View {
+        VStack(spacing: 14) {
+            ForEach(results) { book in
+                resultCard(book)
+            }
+        }
+    }
+
+    private func resultCard(_ book: BookSearchResult) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                coverView(book.coverUrl)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(book.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    if !book.author.isEmpty {
+                        Text(book.author)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack(spacing: 8) {
+                        if let releaseYear = book.releaseYear {
+                            metadataPill("\(releaseYear)")
+                        }
+
+                        if let pages = book.pages {
+                            metadataPill("\(pages) pages")
+                        }
+
+                        if let rating = book.rating {
+                            metadataPill(String(format: "%.1f", rating))
+                        }
+                    }
+                }
+
+                Spacer()
+            }
+
+            if !book.summary.isEmpty {
+                Text(book.summary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(5)
+            }
+
+            if let tags = book.tags, !tags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(tags.prefix(6), id: \.self) { tag in
+                            metadataPill(tag)
+                        }
+                    }
+                }
+            }
+
+            addToLibraryButton(for: book)
+        }
+        .padding(14)
+        .background(.white.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.white.opacity(0.16), lineWidth: 1)
+        }
+    }
+
+    private func addToLibraryButton(for searchResult: BookSearchResult) -> some View {
+        let alreadyAdded = isBookInLibrary(searchResult)
+
+        return Button {
+            addBookToLibrary(searchResult)
+        } label: {
+            HStack(spacing: 8) {
+                Image(alreadyAdded ? "checkwavy" : "addwavy")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 13, height: 13)
+
+                Text(alreadyAdded ? "Added to Library" : "Add to Library")
+                    .font(.system(size: 13, weight: .black, design: .rounded))
+            }
+            .foregroundStyle(alreadyAdded ? LColors.textSecondary : .black)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        alreadyAdded
+                            ? LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.10),
+                                    Color.white.opacity(0.06),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            : LinearGradient(
+                                colors: [
+                                    LColors.gradientBlue,
+                                    LColors.gradientPurple,
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(.white.opacity(alreadyAdded ? 0.14 : 0.22), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(alreadyAdded)
+    }
+
+    private func addBookToLibrary(_ searchResult: BookSearchResult) {
+        guard !isBookInLibrary(searchResult) else { return }
+
+        let bookTitle = searchResult.title
+        let bookAuthor = searchResult.author
+        let bookSummary = searchResult.summary
+        let bookRating = searchResult.rating ?? 0
+        let bookTotalPages = searchResult.pages ?? 0
+        let bookCoverURL = searchResult.coverUrl ?? ""
+        let bookTags = searchResult.tags ?? []
+        let bookGenres: [String] = bookTags.first.map { [$0] } ?? []
+
+        let bookPublicationYear: String
+        if let releaseYear = searchResult.releaseYear {
+            bookPublicationYear = String(releaseYear)
+        } else {
+            bookPublicationYear = ""
+        }
+
+        let bookNotes = "Added from Lumey Book Search. Source: \(searchResult.source)."
+
+        let newBook = Book(
+            title: bookTitle,
+            author: bookAuthor,
+            publisher: searchResult.publisher ?? "",
+            publicationYear: bookPublicationYear,
+            isbn: searchResult.isbn ?? "",
+            summary: bookSummary,
+            rating: bookRating,
+            status: BookStatus.toBeRead,
+            format: BookFormat.other,
+            ownership: BookOwnership.wishlist,
+            totalPages: bookTotalPages,
+            notes: bookNotes,
+            genres: bookGenres,
+            tags: bookTags,
+            coverURL: bookCoverURL
+        )
+
+        modelContext.insert(newBook)
+        addedBookKeys.insert(bookKey(searchResult))
+        bookToEditAfterAdd = newBook
+
+        do {
+            try modelContext.save()
+            showEditBookAfterAdd = true
+        } catch {
+            print("Failed to save searched book:", error)
+            errorMessage = "Lumey couldn't add this book to your library."
+        }
+    }
+
+    private func isBookInLibrary(_ searchResult: BookSearchResult) -> Bool {
+        let targetKey = bookKey(searchResult)
+
+        if addedBookKeys.contains(targetKey) {
+            return true
+        }
+
+        for existingBook in books {
+            let existingKey = bookKey(title: existingBook.title, author: existingBook.author)
+
+            if existingKey == targetKey {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func bookKey(_ searchResult: BookSearchResult) -> String {
+        bookKey(title: searchResult.title, author: searchResult.author)
+    }
+
+    private func bookKey(title: String, author: String) -> String {
+        let rawKey = "\(title)|\(author)"
+        let lowercasedKey = rawKey.lowercased()
+        return lowercasedKey.replacingOccurrences(
+            of: "[^a-z0-9|]",
+            with: "",
+            options: .regularExpression
+        )
+    }
+
+    private func coverView(_ urlString: String?) -> some View {
+        Group {
+            if let urlString, let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case let .success(image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        Image(systemName: "book.closed.fill")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                Image(systemName: "book.closed.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 62, height: 92)
+        .background(.white.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func metadataPill(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(.white.opacity(0.12))
+            .clipShape(Capsule())
+    }
+
+    @MainActor
+    private func searchBooks() async {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            results = try await BookSearchService.shared.searchBooks(query: trimmedQuery)
+
+            if results.isEmpty {
+                errorMessage = "No books found. Try a different title, author, or ISBN."
+            }
+        } catch {
+            print("Book Search Error:", error)
+
+            let nsError = error as NSError
+            print("Book Search Error Domain:", nsError.domain)
+            print("Book Search Error Code:", nsError.code)
+            print("Book Search Error Description:", nsError.localizedDescription)
+
+            errorMessage = nsError.localizedDescription
+        }
+
+        isLoading = false
+    }
+}
