@@ -101,6 +101,7 @@ enum ChallengeSubmissionStatus: String, Codable, CaseIterable, Identifiable {
     case readyToSubmit
     case submitted
     case validating
+    case inProgress
     case approved
     case needsMoreInfo
     case rejected
@@ -114,6 +115,7 @@ enum ChallengeSubmissionStatus: String, Codable, CaseIterable, Identifiable {
         case .readyToSubmit: return "Ready to Submit"
         case .submitted: return "Submitted"
         case .validating: return "Validating"
+        case .inProgress: return "In Progress"
         case .approved: return "Approved"
         case .needsMoreInfo: return "Needs More Info"
         case .rejected: return "Not Eligible"
@@ -127,6 +129,7 @@ enum ChallengeSubmissionStatus: String, Codable, CaseIterable, Identifiable {
         case .readyToSubmit: return "#f6f684"
         case .submitted: return "#a92ce8"
         case .validating: return "#a92ce8"
+        case .inProgress: return "#03dbfc"
         case .approved: return "#e2ed8a"
         case .needsMoreInfo: return "#f6f684"
         case .rejected: return "#dc3beb"
@@ -139,6 +142,7 @@ enum ChallengeSubmissionStatus: String, Codable, CaseIterable, Identifiable {
 
 enum ChallengeValidationResult {
     case approved(String)
+    case inProgress(String)
     case needsMoreInfo(String)
     case rejected(String)
     case requiresAI(String)
@@ -151,6 +155,7 @@ enum ChallengeValidationResult {
     var message: String {
         switch self {
         case .approved(let msg): return msg
+        case .inProgress(let msg): return msg
         case .needsMoreInfo(let msg): return msg
         case .rejected(let msg): return msg
         case .requiresAI(let msg): return msg

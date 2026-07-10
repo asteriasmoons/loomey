@@ -10,15 +10,29 @@ struct BookNotesView: View {
     let book: Book
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showAddSheet = false
     @State private var editingNote: BookNote? = nil
     @State private var selectedNote: BookNote? = nil
     @State private var noteToDelete: BookNote? = nil
     @State private var showDeleteAlert = false
+    @State private var visibleNoteCount = 6
 
     private var notes: [BookNote] {
         (book.bookNotes ?? []).sorted { $0.dateCreated > $1.dateCreated }
+    }
+
+    private var visibleNotes: [BookNote] {
+        Array(notes.prefix(visibleNoteCount))
+    }
+
+    private var hasMoreNotesToLoad: Bool {
+        visibleNoteCount < notes.count
+    }
+
+    private var hasLoadedMoreNotes: Bool {
+        visibleNoteCount > 6
     }
 
     private let columns = [
@@ -43,13 +57,13 @@ struct BookNotesView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showAddSheet) {
+        .adaptivePresentation(isPresented: $showAddSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             BookNoteEditorSheet(book: book, note: nil)
         }
-        .sheet(item: $editingNote) { note in
+        .adaptivePresentation(item: $editingNote, useFullScreenCover: horizontalSizeClass == .regular) { note in
             BookNoteEditorSheet(book: book, note: note)
         }
-        .sheet(item: $selectedNote) { note in
+        .adaptivePresentation(item: $selectedNote, useFullScreenCover: horizontalSizeClass == .regular) { note in
             BookNoteDetailSheet(note: note)
         }
         .lumeyAlertConfirm(
@@ -60,6 +74,7 @@ struct BookNotesView: View {
             if let note = noteToDelete {
                 modelContext.delete(note)
                 noteToDelete = nil
+                visibleNoteCount = min(visibleNoteCount, max(notes.count - 1, 6))
             }
         }
     }
@@ -67,7 +82,7 @@ struct BookNotesView: View {
     private var topBar: some View {
         HStack {
             Text("Notes")
-                .font(.system(size: 24, weight: .black, design: .rounded))
+                .font(.system(size: 28, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
 
             Spacer()
@@ -123,9 +138,15 @@ struct BookNotesView: View {
             if notes.isEmpty {
                 emptyState
             } else {
-                LazyVGrid(columns: columns, spacing: 14) {
-                    ForEach(notes, id: \.id) { note in
-                        noteCard(note)
+                VStack(spacing: 18) {
+                    LazyVGrid(columns: columns, spacing: 14) {
+                        ForEach(visibleNotes, id: \.id) { note in
+                            noteCard(note)
+                        }
+                    }
+
+                    if hasMoreNotesToLoad || hasLoadedMoreNotes {
+                        notePagingButtons
                     }
                 }
             }
@@ -155,6 +176,55 @@ struct BookNotesView: View {
         }
     }
 
+    private var notePagingButtons: some View {
+        HStack(spacing: 12) {
+            if hasLoadedMoreNotes {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        visibleNoteCount = 6
+                    }
+                } label: {
+                    Text("See Less")
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.88))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 11)
+                        .background(
+                            Capsule()
+                                .fill(Color.white.opacity(0.06))
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(LColors.glassBorder, lineWidth: 1)
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+
+            if hasMoreNotesToLoad {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        visibleNoteCount += 6
+                    }
+                } label: {
+                    Text("Load More")
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 11)
+                        .background(
+                            Capsule()
+                                .fill(LGradients.blue)
+                                .shadow(color: LColors.gradientBlue.opacity(0.18), radius: 12, y: 6)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 2)
+    }
+
     private func noteCard(_ note: BookNote) -> some View {
         GlassCard(cornerRadius: 18, padding: 14) {
             VStack(alignment: .leading, spacing: 10) {
@@ -163,10 +233,13 @@ struct BookNotesView: View {
                     .foregroundStyle(.white.opacity(0.84))
                     .lineLimit(5)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: 82, alignment: .topLeading)
 
                 Text(note.dateCreated.formatted(date: .abbreviated, time: .omitted))
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(LColors.textSecondary)
+
+                Spacer(minLength: 0)
 
                 HStack {
                     Spacer()
@@ -215,9 +288,39 @@ struct BookNotesView: View {
                     .buttonStyle(.plain)
                 }
             }
+            .frame(maxWidth: .infinity, minHeight: 148, maxHeight: 148, alignment: .topLeading)
         }
+        .frame(height: 176)
         .onTapGesture {
             selectedNote = note
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
+    }
+
+    @ViewBuilder
+    func adaptivePresentation<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(item: item, content: content)
+        } else {
+            self.sheet(item: item, content: content)
         }
     }
 }
@@ -237,7 +340,7 @@ struct BookNoteDetailSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack {
                         Text("Note")
-                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .font(.system(size: 28, weight: .black, design: .rounded))
                             .foregroundStyle(.white)
 
                         Spacer()
@@ -249,12 +352,17 @@ struct BookNoteDetailSheet: View {
                                 .renderingMode(.template)
                                 .resizable()
                                 .scaledToFit()
-                                .frame(width: 18, height: 18)
-                                .foregroundStyle(LGradients.blue)
+                                .frame(width: 20, height: 20)
+                                .foregroundStyle(LGradients.header)
                                 .frame(width: 42, height: 42)
                                 .background(
                                     Circle()
-                                        .fill(Color.white.opacity(0.06))
+                                        .fill(LColors.bg)
+                                        .overlay(
+                                            Circle()
+                                                .strokeBorder(LGradients.header, lineWidth: 1.2)
+                                        )
+                                        .shadow(color: LColors.gradientBlue.opacity(0.18), radius: 12, y: 6)
                                 )
                         }
                         .buttonStyle(.plain)

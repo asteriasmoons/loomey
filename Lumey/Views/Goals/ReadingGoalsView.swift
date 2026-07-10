@@ -8,6 +8,7 @@ import SwiftData
 
 struct ReadingGoalsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var timer = ReadingTimerManager.shared
     
     @Query(sort: \ReadingGoals.updatedAt, order: .reverse)
@@ -93,17 +94,17 @@ struct ReadingGoalsView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
-            .sheet(isPresented: $showingAddGoalSheet) {
+            .adaptivePresentation(isPresented: $showingAddGoalSheet, useFullScreenCover: horizontalSizeClass == .regular) {
                 AddEditReadingGoalSheet(goal: nil)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
             }
-            .sheet(isPresented: $showingLogSession) {
+            .adaptivePresentation(isPresented: $showingLogSession, useFullScreenCover: horizontalSizeClass == .regular) {
                 LogSessionSheet(goals: goals, books: books)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
             }
-            .sheet(isPresented: $showingReadingTimer) {
+            .adaptivePresentation(isPresented: $showingReadingTimer, useFullScreenCover: horizontalSizeClass == .regular) {
                 ReadingTimerSheet(
                     goals: goals,
                     books: books
@@ -111,12 +112,12 @@ struct ReadingGoalsView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
             }
-            .sheet(isPresented: $showingAddDreamSheet) {
+            .adaptivePresentation(isPresented: $showingAddDreamSheet, useFullScreenCover: horizontalSizeClass == .regular) {
                 AddEditReadingDreamSheet()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
             }
-            .sheet(isPresented: $showingCheckIn) {
+            .adaptivePresentation(isPresented: $showingCheckIn, useFullScreenCover: horizontalSizeClass == .regular) {
                 GoalCheckInSheet(goals: activeGoals, books: books)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
@@ -655,6 +656,7 @@ struct ReadingDreamBulletRow: View {
 struct AddEditReadingDreamSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var title = ""
     @State private var notes = ""
@@ -694,7 +696,7 @@ struct AddEditReadingDreamSheet: View {
                 }
             }
         }
-        .sheet(isPresented: $showingIconPicker) {
+        .adaptivePresentation(isPresented: $showingIconPicker, useFullScreenCover: horizontalSizeClass == .regular) {
             IconPickerView(selectedIcon: $iconName)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
@@ -1265,15 +1267,16 @@ struct DottedGoalProgressBar: View {
             ForEach(0..<dotCount, id: \.self) { index in
                 Circle()
                     .fill(dotFill(for: index))
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(1, contentMode: .fit)
+                    .frame(width: 8, height: 8)
                     .overlay(
                         Circle()
                             .strokeBorder(Color.white.opacity(index < filledDots ? 0.10 : 0.055), lineWidth: 0.6)
                     )
             }
+
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
     
     private func dotFill(for index: Int) -> LinearGradient {
@@ -1484,6 +1487,21 @@ struct ReadingGoalTextBlock: View {
                 .foregroundStyle(.white.opacity(0.84))
                 .lineLimit(5)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
         }
     }
 }
@@ -2371,12 +2389,13 @@ struct GoalCheckInSheet: View {
     
     private func completeCheckIn() {
         guard let goal = selectedGoal else { return }
-        
+
         let previousValue = goal.currentValue
         let previousStreak = goal.currentStreak
         let previousBestStreak = goal.bestStreak
+        let previousStatus = goal.status
         let newValue = Double(updatedProgress) ?? goal.currentValue
-        
+
         // Combine date and time
         let calendar = Calendar.current
         let dateComponents = calendar.dateComponents([.year, .month, .day], from: checkInDate)
@@ -2388,12 +2407,12 @@ struct GoalCheckInSheet: View {
         combined.hour = timeComponents.hour
         combined.minute = timeComponents.minute
         let eventDate = calendar.date(from: combined) ?? Date()
-        
+
         // Reset recurring goals if new period
         if goal.isRecurringGoal {
             goal.resetProgressIfNeededForCurrentPeriod()
         }
-        
+
         // Use the model's built-in methods
         if goal.type == .streak {
             goal.updateStreak(completedOn: eventDate)
@@ -2402,17 +2421,37 @@ struct GoalCheckInSheet: View {
         }
 
         let progressIncrease = max(goal.currentValue - previousValue, 0)
-        
+
+        let minutes: Int
+        let pages: Int
+
+        switch goal.type {
+        case .minutes:
+            minutes = Int(progressIncrease.rounded())
+            pages = 0
+        case .hours:
+            minutes = Int((progressIncrease * 60).rounded())
+            pages = 0
+        case .pages:
+            minutes = 0
+            pages = Int(progressIncrease.rounded())
+        default:
+            minutes = 0
+            pages = 0
+        }
+
         // Determine event type
         let eventType: ReadingGoalHistoryType
-        if goal.status == .completed {
+        if previousStatus != .completed && goal.status == .completed {
             eventType = .completed
         } else if goal.isRecurringGoal && newValue >= goal.targetValue {
             eventType = .completed
+        } else if goal.type == .streak && (previousStreak != goal.currentStreak || previousBestStreak != goal.bestStreak) {
+            eventType = .streakUpdated
         } else {
             eventType = .progressUpdated
         }
-        
+
         let history = ReadingGoalHistory(
             goalID: goal.id,
             goalTitleSnapshot: goal.displayTitle,
@@ -2426,26 +2465,64 @@ struct GoalCheckInSheet: View {
             note: selectedBook != nil ? "Check-in with \(selectedBook!.title)" : "Goal check-in",
             createdAt: eventDate
         )
-        
-        modelContext.insert(history)
-        let checkInSession = ReadingSession(
-            linkedBookID: selectedBook?.id,
-            linkedBookTitle: selectedBook?.title ?? "",
-            linkedGoalID: goal.id,
-            linkedGoalTitle: goal.displayTitle,
-            durationMinutes: goal.type == .minutes
-                ? Int(progressIncrease)
-                : goal.type == .hours
-                    ? Int(progressIncrease * 60)
-                    : 0,
-            pagesRead: goal.type == .pages
-                ? Int(progressIncrease)
-                : 0,
-            notes: "Goal Check-In",
-            date: eventDate
-        )
 
-        modelContext.insert(checkInSession)
+        modelContext.insert(history)
+
+        if minutes > 0 || pages > 0 || goal.type == .streak {
+            let checkInSession = ReadingSession(
+                linkedBookID: selectedBook?.id,
+                linkedBookTitle: selectedBook?.title ?? "",
+                linkedGoalID: goal.id,
+                linkedGoalTitle: goal.displayTitle,
+                durationMinutes: minutes,
+                pagesRead: pages,
+                notes: "Goal Check-In",
+                date: eventDate
+            )
+
+            modelContext.insert(checkInSession)
+        }
+
+        let stats: ReadingStats
+        if let existing = try? modelContext.fetch(FetchDescriptor<ReadingStats>()).first {
+            stats = existing
+        } else {
+            stats = ReadingStats()
+            modelContext.insert(stats)
+        }
+
+        if minutes > 0 || pages > 0 || goal.type == .streak {
+            stats.totalMinutesRead += minutes
+            stats.totalPagesRead += pages
+            stats.totalReadingSessions += 1
+
+            if minutes > stats.longestReadingSessionMinutes {
+                stats.longestReadingSessionMinutes = minutes
+            }
+
+            if calendar.isDateInToday(eventDate) {
+                stats.minutesReadToday += minutes
+                stats.pagesReadToday += pages
+            }
+
+            if calendar.isDate(eventDate, equalTo: Date(), toGranularity: .month) {
+                stats.minutesReadThisMonth += minutes
+                stats.pagesReadThisMonth += pages
+            }
+
+            if let last = stats.lastReadingDate, calendar.isDateInYesterday(last) || calendar.isDateInToday(last) {
+                if !calendar.isDateInToday(last) {
+                    stats.currentReadingStreak += 1
+                }
+            } else {
+                stats.currentReadingStreak = 1
+            }
+
+            stats.bestReadingStreak = max(stats.bestReadingStreak, stats.currentReadingStreak)
+            stats.lastReadingDate = eventDate
+            stats.updatedAt = Date()
+        }
+
         try? modelContext.save()
         dismiss()
     }

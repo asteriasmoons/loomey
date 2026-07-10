@@ -8,6 +8,7 @@ import SwiftData
 
 struct ChallengesView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var appState: AppState
 
     @Query(sort: \ReadingChallenge.createdDate)
@@ -68,19 +69,19 @@ struct ChallengesView: View {
             .task {
                 seedIfNeeded()
             }
-            .sheet(item: $selectedChallenge) { challenge in
+            .adaptivePresentation(item: $selectedChallenge, useFullScreenCover: horizontalSizeClass == .regular) { challenge in
                 ChallengeDetailView(challenge: challenge)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
             }
-            .sheet(isPresented: $showingProfile) {
+            .adaptivePresentation(isPresented: $showingProfile, useFullScreenCover: horizontalSizeClass == .regular) {
                 ChallengeUserProfileView(
                     profile: currentChallengeProfile
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
             }
-            .sheet(isPresented: $showingLeaderboard) {
+            .adaptivePresentation(isPresented: $showingLeaderboard, useFullScreenCover: horizontalSizeClass == .regular) {
                 if let challenge = featuredChallenge ?? allChallenges.first {
                     ChallengeLeaderboardView(
                         challenge: challenge,
@@ -137,7 +138,7 @@ struct ChallengesView: View {
             Button {
                 showingProfile = true
             } label: {
-                LumeyUserAvatarView(
+                UserAvatarView(
                     avatarURL: currentChallengeProfile.avatarURL,
                     avatarName: currentChallengeProfile.avatarName,
                     size: 42,
@@ -430,5 +431,33 @@ struct ChallengesView: View {
                 .font(.system(size: 11, weight: .bold, design: .rounded))
         }
         .foregroundStyle(LColors.textSecondary)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
+    }
+
+    @ViewBuilder
+    func adaptivePresentation<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(item: item, content: content)
+        } else {
+            self.sheet(item: item, content: content)
+        }
     }
 }

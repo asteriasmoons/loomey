@@ -97,7 +97,7 @@ struct ChallengeAnnouncementCard: View {
                 }
 
                 HStack(spacing: 6) {
-                    LumeyUserAvatarView(
+                    UserAvatarView(
                         avatarURL: resolvedAuthorAvatarURL,
                         avatarName: resolvedAuthorAvatarName,
                         size: 16,

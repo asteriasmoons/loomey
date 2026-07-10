@@ -9,6 +9,7 @@ import SwiftUI
 struct BookSearchSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @Query(sort: \Book.lastUpdated, order: .reverse)
     private var books: [Book]
@@ -53,7 +54,7 @@ struct BookSearchSheet: View {
                 }
             }
             .navigationBarHidden(true)
-            .sheet(isPresented: $showEditBookAfterAdd) {
+            .adaptivePresentation(isPresented: $showEditBookAfterAdd, useFullScreenCover: horizontalSizeClass == .regular) {
                 if let bookToEditAfterAdd {
                     AddEditBookSheet(book: bookToEditAfterAdd) { _ in }
                         .presentationDetents([.large])
@@ -429,5 +430,20 @@ struct BookSearchSheet: View {
         }
 
         isLoading = false
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
     }
 }

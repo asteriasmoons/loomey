@@ -9,6 +9,7 @@ import SwiftData
 struct ReadingListsPage: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     @Query(sort: \ReadingList.updatedAt, order: .reverse)
     private var allLists: [ReadingList]
@@ -56,17 +57,17 @@ struct ReadingListsPage: View {
         }
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showingAddSheet) {
+        .adaptivePresentation(isPresented: $showingAddSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             AddEditReadingListSheet(list: nil)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
         }
-        .sheet(item: $selectedList) { list in
+        .adaptivePresentation(item: $selectedList, useFullScreenCover: horizontalSizeClass == .regular) { list in
             ReadingListDetailSheet(list: list)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
         }
-        .sheet(item: $editingList) { list in
+        .adaptivePresentation(item: $editingList, useFullScreenCover: horizontalSizeClass == .regular) { list in
             AddEditReadingListSheet(list: list)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
@@ -223,6 +224,34 @@ struct ReadingListsPage: View {
             .frame(maxWidth: .infinity)
         }
         .padding(.top, 8)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
+    }
+
+    @ViewBuilder
+    func adaptivePresentation<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(item: item, content: content)
+        } else {
+            self.sheet(item: item, content: content)
+        }
     }
 }
 

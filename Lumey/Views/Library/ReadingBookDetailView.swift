@@ -10,6 +10,8 @@ import UniformTypeIdentifiers
 struct ReadingBookDetailView: View {
     @Bindable var book: Book
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.modelContext) private var modelContext
     @State private var isSummaryExpanded = false
     @State private var showEPUBImporter = false
     @State private var showReader = false
@@ -43,9 +45,9 @@ struct ReadingBookDetailView: View {
         ) { result in
             handleEPUBImport(result)
         }
-        .sheet(isPresented: $showReader) {
+        .navigationDestination(isPresented: $showReader) {
             if let readerURL {
-                ReadiumEPUBReaderView(
+                EPUBReaderDestinationView(
                     fileURL: readerURL,
                     bookID: book.id,
                     onClose: {
@@ -59,7 +61,6 @@ struct ReadingBookDetailView: View {
                     },
                     initialLocationJSON: book.epubReaderLocation.isEmpty ? nil : book.epubReaderLocation
                 )
-                .ignoresSafeArea()
             }
         }
     }

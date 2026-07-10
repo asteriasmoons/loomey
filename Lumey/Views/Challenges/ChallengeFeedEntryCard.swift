@@ -101,7 +101,7 @@ struct ChallengeFeedEntryCard: View {
     }
 
     private var avatarView: some View {
-        LumeyUserAvatarView(
+        UserAvatarView(
             avatarURL: avatarURL,
             avatarName: avatarName,
             size: 42,

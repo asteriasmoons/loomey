@@ -9,6 +9,8 @@ import PhotosUI
 
 struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @EnvironmentObject private var appState: AppState
     @Query private var users: [AuthUser]
     @Query(sort: \Book.lastUpdated, order: .reverse)
     private var books: [Book]
@@ -21,8 +23,25 @@ struct ProfileView: View {
 
     @State private var pickerItem: PhotosPickerItem? = nil
     @State private var profileImage: UIImage? = nil
+    @State private var showingSignInSheet = false
 
-    private var user: AuthUser? { users.first }
+    private var user: AuthUser? {
+        appState.currentUser ?? users.first
+    }
+
+    private var isSignedIn: Bool {
+        appState.currentUser != nil
+    }
+
+    private var profileDisplayName: String {
+        let trimmed = user?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "Your Name" : trimmed
+    }
+
+    private var profileEmail: String {
+        let trimmed = user?.email?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "No email connected" : trimmed
+    }
     
     private var readingDNABooks: [Book] {
         books.filter { !$0.isArchived && $0.deletedAt == nil }
@@ -333,17 +352,55 @@ struct ProfileView: View {
                                 .buttonStyle(.plain)
                                 .onChange(of: pickerItem) { loadPhoto() }
 
-                                VStack(spacing: 4) {
-                                    Text(user?.displayName ?? "Your Name")
+                                VStack(spacing: 8) {
+                                    Text(profileDisplayName)
                                         .font(.system(size: 20, weight: .bold, design: .rounded))
                                         .foregroundStyle(LColors.textPrimary)
+                                        .multilineTextAlignment(.center)
 
-                                    if let email = user?.email {
-                                        Text(email)
-                                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                                            .foregroundStyle(LColors.textSecondary)
-                                    }
+                                    Text(profileEmail)
+                                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                                        .foregroundStyle(LColors.textSecondary)
+                                        .multilineTextAlignment(.center)
+
+                                    Text(isSignedIn ? "Signed in with Apple" : "Sign in to sync your Loomey profile.")
+                                        .font(.system(size: 12, weight: .black, design: .rounded))
+                                        .foregroundStyle(isSignedIn ? AnyShapeStyle(LGradients.header) : AnyShapeStyle(LColors.textSecondary))
+                                        .multilineTextAlignment(.center)
                                 }
+
+                                Button {
+                                    if isSignedIn {
+                                        appState.signOut()
+                                    } else {
+                                        showingSignInSheet = true
+                                    }
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Image(isSignedIn ? "xmarkwavy" : "profilewavy")
+                                            .renderingMode(.template)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(width: 15, height: 15)
+                                            .foregroundStyle(.white)
+
+                                        Text(isSignedIn ? "Sign Out" : "Sign In")
+                                            .font(.system(size: 14, weight: .black, design: .rounded))
+                                            .foregroundStyle(.white)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 13)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: LSpacing.buttonRadius, style: .continuous)
+                                            .fill(isSignedIn ? AnyShapeStyle(LColors.glassSurface2) : AnyShapeStyle(LColors.accentGradient))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: LSpacing.buttonRadius, style: .continuous)
+                                            .strokeBorder(isSignedIn ? AnyShapeStyle(LColors.glassBorder) : AnyShapeStyle(LGradients.header), lineWidth: 1.5)
+                                    )
+                                    .shadow(color: isSignedIn ? Color.black.opacity(0.18) : LColors.gradientPurple.opacity(0.25), radius: 12, x: 0, y: 7)
+                                }
+                                .buttonStyle(.plain)
                             }
                             .frame(maxWidth: .infinity)
                         }
@@ -362,6 +419,13 @@ struct ProfileView: View {
             }
         }
         .onAppear { loadSavedPhoto() }
+        .adaptivePresentation(isPresented: $showingSignInSheet, useFullScreenCover: horizontalSizeClass == .regular) {
+            SignInView()
+                .environmentObject(appState)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+                .preferredColorScheme(.dark)
+        }
     }
     
     // MARK: - Reading DNA
@@ -556,6 +620,21 @@ private extension Double {
             return "\(Int(self))"
         } else {
             return String(format: "%.1f", self)
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
         }
     }
 }

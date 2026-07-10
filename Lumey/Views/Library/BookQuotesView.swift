@@ -10,6 +10,7 @@ struct BookQuotesView: View {
     let book: Book
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showAddSheet = false
     @State private var editingQuote: BookQuote? = nil
@@ -37,10 +38,10 @@ struct BookQuotesView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showAddSheet) {
+        .adaptivePresentation(isPresented: $showAddSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             BookQuoteEditorSheet(book: book, quote: nil)
         }
-        .sheet(item: $editingQuote) { quote in
+        .adaptivePresentation(item: $editingQuote, useFullScreenCover: horizontalSizeClass == .regular) { quote in
             BookQuoteEditorSheet(book: book, quote: quote)
         }
         .lumeyAlertConfirm(
@@ -225,6 +226,34 @@ struct BookQuotesView: View {
                         .foregroundStyle(LColors.textSecondary)
                 }
             }
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
+    }
+
+    @ViewBuilder
+    func adaptivePresentation<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(item: item, content: content)
+        } else {
+            self.sheet(item: item, content: content)
         }
     }
 }

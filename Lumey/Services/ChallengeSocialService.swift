@@ -15,7 +15,7 @@ final class ChallengeSocialService {
 
     private let baseURL: String
 
-    init(baseURL: String = "https://lystaria-api-production.up.railway.app") {
+    init(baseURL: String = "https://vox-api-production-31fd.up.railway.app") {
         self.baseURL = baseURL
     }
 
@@ -406,7 +406,7 @@ final class ChallengeSocialService {
 
     // MARK: - Messaging
 
-    func fetchConversations(userID: String) async throws -> [LumeyConversationDTO] {
+    func fetchConversations(userID: String) async throws -> [ConversationDTO] {
         let url = try makeURL("/api/lumey/messages/conversations?userID=\(userID)")
 
         var request = URLRequest(url: url)
@@ -416,7 +416,7 @@ final class ChallengeSocialService {
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
 
-        return try JSONDecoder.challengeDecoder.decode([LumeyConversationDTO].self, from: data)
+        return try JSONDecoder.challengeDecoder.decode([ConversationDTO].self, from: data)
     }
 
     func createConversation(
@@ -424,10 +424,10 @@ final class ChallengeSocialService {
         senderUsername: String,
         recipientUserID: String,
         recipientUsername: String
-    ) async throws -> LumeyConversationDTO {
+    ) async throws -> ConversationDTO {
         let url = try makeURL("/api/lumey/messages/conversations")
 
-        let requestBody = LumeyCreateConversationRequestDTO(
+        let requestBody = CreateConversationRequestDTO(
             senderUserID: senderUserID,
             senderUsername: senderUsername,
             recipientUserID: recipientUserID,
@@ -443,10 +443,10 @@ final class ChallengeSocialService {
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
 
-        return try JSONDecoder.challengeDecoder.decode(LumeyConversationDTO.self, from: data)
+        return try JSONDecoder.challengeDecoder.decode(ConversationDTO.self, from: data)
     }
 
-    func fetchMessages(conversationID: String, userID: String) async throws -> [LumeyDirectMessageDTO] {
+    func fetchMessages(conversationID: String, userID: String) async throws -> [DirectMessageDTO] {
         let url = try makeURL("/api/lumey/messages/conversations/\(conversationID)/messages?userID=\(userID)")
 
         var request = URLRequest(url: url)
@@ -456,7 +456,7 @@ final class ChallengeSocialService {
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
 
-        return try JSONDecoder.challengeDecoder.decode([LumeyDirectMessageDTO].self, from: data)
+        return try JSONDecoder.challengeDecoder.decode([DirectMessageDTO].self, from: data)
     }
 
     func sendMessage(
@@ -464,10 +464,10 @@ final class ChallengeSocialService {
         senderUserID: String,
         senderUsername: String,
         text: String
-    ) async throws -> LumeyDirectMessageDTO {
+    ) async throws -> DirectMessageDTO {
         let url = try makeURL("/api/lumey/messages/conversations/\(conversationID)/messages")
 
-        let requestBody = LumeySendMessageRequestDTO(
+        let requestBody = SendMessageRequestDTO(
             senderUserID: senderUserID,
             senderUsername: senderUsername,
             text: text
@@ -482,13 +482,13 @@ final class ChallengeSocialService {
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
 
-        return try JSONDecoder.challengeDecoder.decode(LumeyDirectMessageDTO.self, from: data)
+        return try JSONDecoder.challengeDecoder.decode(DirectMessageDTO.self, from: data)
     }
 
     func markMessagesRead(conversationID: String, userID: String) async throws {
         let url = try makeURL("/api/lumey/messages/conversations/\(conversationID)/read")
 
-        let requestBody = LumeyMarkReadRequestDTO(userID: userID)
+        let requestBody = MarkReadRequestDTO(userID: userID)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -500,7 +500,7 @@ final class ChallengeSocialService {
         try validate(response: response, data: data)
     }
 
-    func fetchMessageableUsers(userID: String) async throws -> [LumeyMessageableUserDTO] {
+    func fetchMessageableUsers(userID: String) async throws -> [MessageableUserDTO] {
         let url = try makeURL("/api/lumey/messages/messageable-users?userID=\(userID)")
 
         var request = URLRequest(url: url)
@@ -510,7 +510,7 @@ final class ChallengeSocialService {
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
 
-        return try JSONDecoder.challengeDecoder.decode([LumeyMessageableUserDTO].self, from: data)
+        return try JSONDecoder.challengeDecoder.decode([MessageableUserDTO].self, from: data)
     }
 
     // MARK: - Helpers
@@ -876,7 +876,7 @@ private extension ISO8601DateFormatter {
 
 // MARK: - Admin
 
-enum LumeyAdmin {
+enum VoxAdmin {
     /// Set this to your Apple User ID to enable admin features.
     /// Only this userID can create feed announcements.
     static let adminUserID = "001664.f2fefbb84f024544b98e865fa6c6b49e.1524"
@@ -993,7 +993,7 @@ struct ChallengeCreateAnnouncementRequestDTO: Codable {
 
 // MARK: - Messaging DTOs
 
-struct LumeyConversationDTO: Codable, Identifiable {
+struct ConversationDTO: Codable, Identifiable {
     let id: String?
     let participantA: String
     let participantB: String
@@ -1035,7 +1035,7 @@ struct LumeyConversationDTO: Codable, Identifiable {
     }
 }
 
-struct LumeyDirectMessageDTO: Codable, Identifiable {
+struct DirectMessageDTO: Codable, Identifiable {
     let id: String?
     let conversationID: String
     let senderUserID: String
@@ -1055,24 +1055,24 @@ struct LumeyDirectMessageDTO: Codable, Identifiable {
     }
 }
 
-struct LumeyCreateConversationRequestDTO: Codable {
+struct CreateConversationRequestDTO: Codable {
     let senderUserID: String
     let senderUsername: String
     let recipientUserID: String
     let recipientUsername: String
 }
 
-struct LumeySendMessageRequestDTO: Codable {
+struct SendMessageRequestDTO: Codable {
     let senderUserID: String
     let senderUsername: String
     let text: String
 }
 
-struct LumeyMarkReadRequestDTO: Codable {
+struct MarkReadRequestDTO: Codable {
     let userID: String
 }
 
-struct LumeyMessageableUserDTO: Codable, Identifiable {
+struct MessageableUserDTO: Codable, Identifiable {
     var id: String { userID }
     let userID: String
     let username: String
@@ -1083,7 +1083,7 @@ struct LumeyMessageableUserDTO: Codable, Identifiable {
 
 // MARK: - Global Avatar View
 
-struct LumeyUserAvatarView: View {
+struct UserAvatarView: View {
     let avatarURL: String?
     let avatarName: String?
     var size: CGFloat = 40

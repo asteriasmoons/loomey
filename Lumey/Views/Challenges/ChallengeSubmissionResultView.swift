@@ -274,6 +274,8 @@ struct ChallengeSubmissionResultView: View {
         switch submission.validationStatus {
         case .approved:
             return "checkwavy"
+        case .inProgress:
+            return "clockfill"
         case .needsMoreInfo:
             return "questionwavy"
         case .rejected:
@@ -291,6 +293,8 @@ struct ChallengeSubmissionResultView: View {
         switch submission.validationStatus {
         case .approved:
             return "Challenge Approved"
+        case .inProgress:
+            return "In Progress"
         case .needsMoreInfo:
             return "Needs More Info"
         case .rejected:
@@ -317,6 +321,8 @@ struct ChallengeSubmissionResultView: View {
         switch submission.validationStatus {
         case .approved:
             return "Your submission was approved and your points have been awarded."
+        case .inProgress:
+            return "Your challenge progress has been saved. Keep going until you meet the full requirement."
         case .needsMoreInfo:
             return "This submission needs a little more information before it can be approved."
         case .rejected:
@@ -338,6 +344,8 @@ struct ChallengeSubmissionResultView: View {
         switch submission.validationStatus {
         case .approved:
             return "Done"
+        case .inProgress:
+            return "Close"
         case .needsMoreInfo:
             return "Review Submission"
         case .rejected:

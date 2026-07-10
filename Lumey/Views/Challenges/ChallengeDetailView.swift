@@ -9,6 +9,7 @@ import SwiftData
 struct ChallengeDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var appState: AppState
 
     let challenge: ReadingChallenge
@@ -70,14 +71,14 @@ struct ChallengeDetailView: View {
         .onAppear {
             challengeManager = ChallengeManager(modelContext: modelContext)
         }
-        .sheet(isPresented: $showingSubmissionSheet) {
+        .adaptivePresentation(isPresented: $showingSubmissionSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             if let entry = userEntry {
                 ChallengeSubmissionSheet(challenge: challenge, entry: entry)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
             }
         }
-        .sheet(isPresented: $showingResultView) {
+        .adaptivePresentation(isPresented: $showingResultView, useFullScreenCover: horizontalSizeClass == .regular) {
             if let submission = userSubmission {
                 ChallengeSubmissionResultView(submission: submission, challenge: challenge)
                     .presentationDetents([.medium])
@@ -422,5 +423,20 @@ struct ChallengeDetailView: View {
     private func joinChallenge() {
         guard let manager = challengeManager else { return }
         _ = manager.joinChallenge(challenge, userID: currentUserID)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
     }
 }

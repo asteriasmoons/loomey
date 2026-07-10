@@ -33,25 +33,27 @@ struct ReadiumEPUBReaderView: UIViewControllerRepresentable {
     }
 
     func makeUIViewController(context: Context) -> UINavigationController {
-        let loadingController = ReadiumLoadingViewController()
-        loadingController.hideLoadingUI()
+        let themeBackground = context.coordinator.resolvedThemeBackground()
+
+        let loadingController = ReadiumLoadingViewController(backgroundColor: themeBackground)
 
         let navigationController = UINavigationController()
         navigationController.viewControllers = [loadingController]
-        navigationController.view.backgroundColor = UIColor(
-            red: 0.0078,
-            green: 0.0118,
-            blue: 0.0157,
-            alpha: 1.0
-        )
+        navigationController.view.backgroundColor = themeBackground
 
         navigationController.setNavigationBarHidden(true, animated: false)
 
-        Task {
-            await context.coordinator.openPublication(
-                in: navigationController,
-                loadingController: loadingController
-            )
+        loadingController.loadViewIfNeeded()
+
+        DispatchQueue.main.async {
+            Task { @MainActor in
+                await Task.yield()
+
+                await context.coordinator.openPublication(
+                    in: navigationController,
+                    loadingController: loadingController
+                )
+            }
         }
 
         return navigationController
@@ -103,11 +105,30 @@ struct ReadiumEPUBReaderView: UIViewControllerRepresentable {
             }
         }
 
+        func resolvedThemeBackground() -> UIColor {
+            let descriptor = FetchDescriptor<ReaderSettings>()
+            let settings = (try? modelContext.fetch(descriptor))?.first
+            let theme = settings?.theme ?? .dark
+            switch theme {
+            case .white:   return UIColor(lumeyHex: "#FFFFFF")
+            case .sepia:   return UIColor(lumeyHex: "#EDDBCB")
+            case .gray:    return UIColor(lumeyHex: "#303136")
+            case .dark:    return UIColor(lumeyHex: "#020304")
+            case .obsidian: return UIColor(lumeyHex: "#020304")
+            case .ember:   return UIColor(lumeyHex: "#322407")
+            case .violet:  return UIColor(lumeyHex: "#440D5F")
+            case .rose:    return UIColor(lumeyHex: "#75105C")
+            }
+        }
+
         @MainActor
         func openPublication(
             in navigationController: UINavigationController,
             loadingController: ReadiumLoadingViewController
         ) async {
+            let overallStart = CFAbsoluteTimeGetCurrent()
+            print("[EPUB Reader] Starting open for:", fileURL.lastPathComponent)
+
             securityScopedAccess = fileURL.startAccessingSecurityScopedResource()
 
             guard let readiumFileURL = fileURL.fileURL else {
@@ -115,23 +136,32 @@ struct ReadiumEPUBReaderView: UIViewControllerRepresentable {
                 return
             }
 
+            let retrieveStart = CFAbsoluteTimeGetCurrent()
             let assetResult = await assetRetriever.retrieve(url: readiumFileURL)
+            print("[EPUB Reader] Asset retrieval took", String(format: "%.2f", CFAbsoluteTimeGetCurrent() - retrieveStart), "seconds")
 
             switch assetResult {
             case .success(let asset):
+                let publicationStart = CFAbsoluteTimeGetCurrent()
                 let publicationResult = await publicationOpener.open(
                     asset: asset,
                     allowUserInteraction: true,
                     sender: loadingController
                 )
+                print("[EPUB Reader] Publication open took", String(format: "%.2f", CFAbsoluteTimeGetCurrent() - publicationStart), "seconds")
 
                 switch publicationResult {
                 case .success(let publication):
+                    print("[EPUB Reader] Publication ready after", String(format: "%.2f", CFAbsoluteTimeGetCurrent() - overallStart), "seconds")
+
+                    let navigatorStart = CFAbsoluteTimeGetCurrent()
                     await showNavigator(
                         publication: publication,
                         in: navigationController,
                         loadingController: loadingController
                     )
+                    print("[EPUB Reader] Navigator setup took", String(format: "%.2f", CFAbsoluteTimeGetCurrent() - navigatorStart), "seconds")
+                    print("[EPUB Reader] Total reader setup time", String(format: "%.2f", CFAbsoluteTimeGetCurrent() - overallStart), "seconds")
 
                 case .failure(let error):
                     loadingController.showError("Lumey could not open this EPUB.\n\n\(String(describing: error))")
@@ -149,12 +179,21 @@ struct ReadiumEPUBReaderView: UIViewControllerRepresentable {
             loadingController: ReadiumLoadingViewController
         ) async {
             do {
+                loadingController.showLoading(
+                    title: "Opening Reader",
+                    subtitle: "Laying out the book..."
+                )
+
+                await Task.yield()
+
                 let initialLocation = initialLocationJSON.flatMap { try? Locator(jsonString: $0) }
+                let navigatorCreationStart = CFAbsoluteTimeGetCurrent()
                 let navigator = try EPUBNavigatorViewController(
                     publication: publication,
                     initialLocation: initialLocation,
                     config: EPUBNavigatorViewController.Configuration()
                 )
+                print("[EPUB Reader] Navigator creation took", String(format: "%.2f", CFAbsoluteTimeGetCurrent() - navigatorCreationStart), "seconds")
 
                 let delegateBridge = ReadiumNavigatorDelegateBridge(
                     onClose: onClose,
@@ -175,12 +214,21 @@ struct ReadiumEPUBReaderView: UIViewControllerRepresentable {
                 self.chromeController = chromeController
                 delegateBridge.onReadingLocationChanged = { [weak chromeController] locator in
                     chromeController?.updateLocationLabel(for: locator)
+                    chromeController?.hideReaderLoadingOverlay()
                 }
                 delegateBridge.onBookmarkRequested = { [weak chromeController] locator in
                     chromeController?.storeBookmark(locator)
                 }
 
-                navigationController.setViewControllers([chromeController], animated: false)
+                let presentationStart = CFAbsoluteTimeGetCurrent()
+                navigationController.setViewControllers([chromeController], animated: true)
+                print("[EPUB Reader] Reader presentation took", String(format: "%.2f", CFAbsoluteTimeGetCurrent() - presentationStart), "seconds")
+
+                // Fallback: dismiss the overlay after 2s if locationDidChange hasn't fired yet
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    chromeController.hideReaderLoadingOverlay()
+                }
             } catch {
                 loadingController.showError("Lumey could not start the EPUB reader.\n\n\(error.localizedDescription)")
             }
@@ -243,6 +291,10 @@ final class ReadiumReaderChromeViewController: UIViewController {
     private let topBar = UIView()
     private let bottomBar = UIView()
     private let locationLabel = UILabel()
+    private let readerLoadingOverlay = UIView()
+    private let readerLoadingSpinner = UIActivityIndicatorView(style: .large)
+    private let readerLoadingTitle = UILabel()
+    private let readerLoadingSubtitle = UILabel()
     private var barsAreHidden = false
     private let topGradientLayer = CAGradientLayer()
     private let bottomGradientLayer = CAGradientLayer()
@@ -274,13 +326,22 @@ final class ReadiumReaderChromeViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
+
+        // Use theme color immediately — never hardcoded black
+        let themeColor = currentSettings?.theme.backgroundColor ?? UIColor(red: 0.0078, green: 0.0118, blue: 0.0157, alpha: 1.0)
+        view.backgroundColor = themeColor
 
         buildTopBar()
         buildBottomBar()
 
+        // Build and show the overlay FIRST, before the WebView is in the hierarchy.
+        // This ensures the overlay is composited on screen before WKWebView's
+        // black blank state is ever visible.
+        buildReaderLoadingOverlay()
+
         addChild(navigator)
-        view.insertSubview(navigator.view, belowSubview: topBar)
+        // Insert navigator BELOW the overlay so the overlay always wins visually
+        view.insertSubview(navigator.view, belowSubview: readerLoadingOverlay)
         navigator.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             navigator.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -322,6 +383,64 @@ final class ReadiumReaderChromeViewController: UIViewController {
             }
         }
     }
+    private func buildReaderLoadingOverlay() {
+        readerLoadingOverlay.translatesAutoresizingMaskIntoConstraints = false
+        readerLoadingOverlay.backgroundColor = currentSettings?.theme.backgroundColor ?? UIColor(lumeyHex: "#020304")
+        readerLoadingOverlay.isUserInteractionEnabled = true
+
+        readerLoadingSpinner.translatesAutoresizingMaskIntoConstraints = false
+        readerLoadingSpinner.color = currentSettings?.theme.textColor ?? .white
+        readerLoadingSpinner.startAnimating()
+
+        readerLoadingTitle.translatesAutoresizingMaskIntoConstraints = false
+        readerLoadingTitle.text = "Opening Reader"
+        readerLoadingTitle.textColor = currentSettings?.theme.textColor ?? .white
+        readerLoadingTitle.font = UIFont.rounded(size: 24, weight: .black)
+        readerLoadingTitle.textAlignment = .center
+
+        readerLoadingSubtitle.translatesAutoresizingMaskIntoConstraints = false
+        readerLoadingSubtitle.text = "Laying out the book..."
+        readerLoadingSubtitle.textColor = (currentSettings?.theme.textColor ?? .white).withAlphaComponent(0.58)
+        readerLoadingSubtitle.font = UIFont.rounded(size: 14, weight: .semibold)
+        readerLoadingSubtitle.textAlignment = .center
+
+        let stack = UIStackView(arrangedSubviews: [
+            readerLoadingSpinner,
+            readerLoadingTitle,
+            readerLoadingSubtitle
+        ])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 14
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        view.addSubview(readerLoadingOverlay)
+        readerLoadingOverlay.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            readerLoadingOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            readerLoadingOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            readerLoadingOverlay.topAnchor.constraint(equalTo: view.topAnchor),
+            readerLoadingOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: readerLoadingOverlay.leadingAnchor, constant: 28),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: readerLoadingOverlay.trailingAnchor, constant: -28),
+            stack.centerXAnchor.constraint(equalTo: readerLoadingOverlay.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: readerLoadingOverlay.centerYAnchor)
+        ])
+    }
+
+    func hideReaderLoadingOverlay() {
+        guard !readerLoadingOverlay.isHidden else { return }
+
+        UIView.animate(withDuration: 0.22, animations: {
+            self.readerLoadingOverlay.alpha = 0
+        }) { _ in
+            self.readerLoadingSpinner.stopAnimating()
+            self.readerLoadingOverlay.isHidden = true
+        }
+    }
+
 
     func updateLocationLabel(_ text: String) {
         locationLabel.text = text
@@ -476,13 +595,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
         )
 
         let nav = UINavigationController(rootViewController: sheet)
-        nav.modalPresentationStyle = .pageSheet
-
-        if let presentation = nav.sheetPresentationController {
-            presentation.detents = [.medium(), .large()]
-            presentation.prefersGrabberVisible = true
-            presentation.preferredCornerRadius = 28
-        }
+        configureAdaptivePresentation(for: nav, detents: [.medium(), .large()])
 
         present(nav, animated: true)
     }
@@ -559,13 +672,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
                 )
 
                 let nav = UINavigationController(rootViewController: sheet)
-                nav.modalPresentationStyle = .pageSheet
-
-                if let presentation = nav.sheetPresentationController {
-                    presentation.detents = [.medium(), .large()]
-                    presentation.prefersGrabberVisible = true
-                    presentation.preferredCornerRadius = 28
-                }
+                configureAdaptivePresentation(for: nav, detents: [.medium(), .large()])
 
                 present(nav, animated: true)
 
@@ -602,15 +709,27 @@ final class ReadiumReaderChromeViewController: UIViewController {
         )
         
         let nav = UINavigationController(rootViewController: settingsVC)
-        nav.modalPresentationStyle = .pageSheet
+        configureAdaptivePresentation(for: nav, detents: [.medium()])
         
-        if let presentation = nav.sheetPresentationController {
-            presentation.detents = [.medium()]
+        present(nav, animated: true)
+    }
+
+    private func configureAdaptivePresentation(
+        for controller: UIViewController,
+        detents: [UISheetPresentationController.Detent]
+    ) {
+        if traitCollection.horizontalSizeClass == .regular {
+            controller.modalPresentationStyle = .fullScreen
+            return
+        }
+
+        controller.modalPresentationStyle = .pageSheet
+
+        if let presentation = controller.sheetPresentationController {
+            presentation.detents = detents
             presentation.prefersGrabberVisible = true
             presentation.preferredCornerRadius = 28
         }
-        
-        present(nav, animated: true)
     }
     
     private func loadOrCreateSettings() {
@@ -657,6 +776,14 @@ final class ReadiumReaderChromeViewController: UIViewController {
             return UIColor(lumeyHex: "#303136")
         case .dark:
             return UIColor(lumeyHex: "#020304")
+        case .obsidian:
+            return UIColor(lumeyHex: "#020304")
+        case .ember:
+            return UIColor(lumeyHex: "#322407")
+        case .violet:
+            return UIColor(lumeyHex: "#440D5F")
+        case .rose:
+            return UIColor(lumeyHex: "#75105C")
         }
     }
 
@@ -670,6 +797,14 @@ final class ReadiumReaderChromeViewController: UIViewController {
             return UIColor(lumeyHex: "#D9D9DB")
         case .dark:
             return UIColor(lumeyHex: "#FFFFFF")
+        case .obsidian:
+            return UIColor(lumeyHex: "#F7F7FA")
+        case .ember:
+            return UIColor(lumeyHex: "#F6E7C6")
+        case .violet:
+            return UIColor(lumeyHex: "#F2D9FF")
+        case .rose:
+            return UIColor(lumeyHex: "#FFE0F4")
         }
     }
 
@@ -683,6 +818,14 @@ final class ReadiumReaderChromeViewController: UIViewController {
             return UIColor(lumeyHex: "#D9D9DB").withAlphaComponent(0.08)
         case .dark:
             return UIColor(lumeyHex: "#FFFFFF").withAlphaComponent(0.05)
+        case .obsidian:
+            return UIColor(lumeyHex: "#FFFFFF").withAlphaComponent(0.08)
+        case .ember:
+            return UIColor(lumeyHex: "#F6E7C6").withAlphaComponent(0.14)
+        case .violet:
+            return UIColor(lumeyHex: "#F2D9FF").withAlphaComponent(0.14)
+        case .rose:
+            return UIColor(lumeyHex: "#FFE0F4").withAlphaComponent(0.14)
         }
     }
     
@@ -701,6 +844,11 @@ final class ReadiumReaderChromeViewController: UIViewController {
 
             self.view.backgroundColor = backgroundColor
             self.locationLabel.textColor = textColor.withAlphaComponent(0.82)
+
+            self.readerLoadingOverlay.backgroundColor = backgroundColor
+            self.readerLoadingSpinner.color = textColor
+            self.readerLoadingTitle.textColor = textColor
+            self.readerLoadingSubtitle.textColor = textColor.withAlphaComponent(0.58)
 
             if let headerStack = self.topBar.subviews.compactMap({ $0 as? UIStackView }).first,
                let titleLabel = headerStack.arrangedSubviews.compactMap({ $0 as? UILabel }).first {
@@ -755,23 +903,36 @@ final class ReadiumLoadingViewController: UIViewController {
     private let titleLabel = UILabel()
     private let subtitleLabel = UILabel()
     private let spinner = UIActivityIndicatorView(style: .large)
+    private let initialBackgroundColor: UIColor
+
+    init(backgroundColor: UIColor = UIColor(red: 0.0078, green: 0.0118, blue: 0.0157, alpha: 1.0)) {
+        self.initialBackgroundColor = backgroundColor
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        self.initialBackgroundColor = UIColor(red: 0.0078, green: 0.0118, blue: 0.0157, alpha: 1.0)
+        super.init(coder: coder)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        view.backgroundColor = UIColor.black
+        view.backgroundColor = initialBackgroundColor
 
-        spinner.color = .white
+        let isLight = initialBackgroundColor.isLight
+        let labelColor: UIColor = isLight ? UIColor(red: 0.07, green: 0.07, blue: 0.07, alpha: 1) : .white
+        spinner.color = labelColor
         spinner.startAnimating()
 
         titleLabel.text = "Opening Reader"
-        titleLabel.textColor = .white
+        titleLabel.textColor = labelColor
         titleLabel.font = .systemFont(ofSize: 24, weight: .black)
         titleLabel.textAlignment = .center
         titleLabel.numberOfLines = 0
 
         subtitleLabel.text = "Preparing your EPUB..."
-        subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.58)
+        subtitleLabel.textColor = labelColor.withAlphaComponent(0.58)
         subtitleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         subtitleLabel.textAlignment = .center
         subtitleLabel.numberOfLines = 0
@@ -796,6 +957,24 @@ final class ReadiumLoadingViewController: UIViewController {
         ])
     }
     
+    func showLoading(title: String, subtitle: String) {
+        loadViewIfNeeded()
+
+        view.backgroundColor = UIColor(
+            red: 0.0078,
+            green: 0.0118,
+            blue: 0.0157,
+            alpha: 1.0
+        )
+
+        titleLabel.text = title
+        subtitleLabel.text = subtitle
+        titleLabel.isHidden = false
+        subtitleLabel.isHidden = false
+        spinner.isHidden = false
+        spinner.startAnimating()
+    }
+
     func hideLoadingUI() {
         spinner.stopAnimating()
         spinner.isHidden = true
@@ -956,6 +1135,8 @@ final class ReadiumTableOfContentsViewController: UIViewController, UITableViewD
     private func navIconButton(assetName: String, action: Selector) -> UIButton {
         let button = LumeyGradientIconButton(assetName: assetName)
         button.backgroundColor = .clear
+        button.addTarget(self, action: action, for: .touchUpInside)
+
         NSLayoutConstraint.activate([
             button.widthAnchor.constraint(equalToConstant: 22),
             button.heightAnchor.constraint(equalToConstant: 22)
@@ -1367,6 +1548,12 @@ final class LumeyGradientIconImageView: UIImageView {
 }
 
 extension UIColor {
+    var isLight: Bool {
+        var white: CGFloat = 0
+        getWhite(&white, alpha: nil)
+        return white > 0.5
+    }
+
     convenience init(lumeyHex hex: String) {
         var cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         cleaned = cleaned.replacingOccurrences(of: "#", with: "")

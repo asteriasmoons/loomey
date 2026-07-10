@@ -8,6 +8,7 @@ import SwiftData
 
 struct ReadingHomeView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var appState: AppState
     
     @State private var showingSignInSheet = false
@@ -20,6 +21,9 @@ struct ReadingHomeView: View {
 
     @Query(sort: \ReadingGoals.updatedAt, order: .reverse)
     private var goals: [ReadingGoals]
+
+    @Query(sort: \ReadingSession.date, order: .reverse)
+    private var sessions: [ReadingSession]
 
     @Query
     private var authUsers: [AuthUser]
@@ -57,6 +61,93 @@ struct ReadingHomeView: View {
         books.filter { !$0.isArchived }
     }
 
+    private var currentStreak: Int {
+        let calendar = Calendar.current
+        let readingDays = Set(
+            sessions.map {
+                calendar.startOfDay(for: $0.date)
+            }
+        )
+
+        guard !readingDays.isEmpty else { return 0 }
+
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+
+        let anchorDay: Date
+
+        if readingDays.contains(today) {
+            anchorDay = today
+        } else if readingDays.contains(yesterday) {
+            anchorDay = yesterday
+        } else {
+            return 0
+        }
+
+        var streak = 0
+        var day = anchorDay
+
+        while readingDays.contains(day) {
+            streak += 1
+
+            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: day) else {
+                break
+            }
+
+            day = previousDay
+        }
+
+        return streak
+    }
+
+    private var bestStreak: Int {
+        let calendar = Calendar.current
+        let sortedDays = Array(
+            Set(
+                sessions.map {
+                    calendar.startOfDay(for: $0.date)
+                }
+            )
+        )
+        .sorted()
+
+        guard !sortedDays.isEmpty else { return 0 }
+
+        var best = 1
+        var current = 1
+
+        for index in 1..<sortedDays.count {
+            let previous = sortedDays[index - 1]
+            let currentDay = sortedDays[index]
+
+            if calendar.isDate(
+                currentDay,
+                inSameDayAs: calendar.date(byAdding: .day, value: 1, to: previous) ?? previous
+            ) {
+                current += 1
+                best = max(best, current)
+            } else {
+                current = 1
+            }
+        }
+
+        return best
+    }
+
+    private var todaysSessions: [ReadingSession] {
+        sessions.filter {
+            Calendar.current.isDateInToday($0.date)
+        }
+    }
+
+    private var pagesReadToday: Int {
+        todaysSessions.reduce(0) { $0 + $1.pagesRead }
+    }
+
+    private var minutesReadToday: Int {
+        todaysSessions.reduce(0) { $0 + $1.durationMinutes }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -83,7 +174,7 @@ struct ReadingHomeView: View {
                 restoreSavedUserIfNeeded()
                 showingSignInSheet = !isSignedIn
             }
-            .sheet(isPresented: $showingSignInSheet) {
+            .adaptivePresentation(isPresented: $showingSignInSheet, useFullScreenCover: horizontalSizeClass == .regular) {
                 SignInView()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
@@ -301,7 +392,7 @@ private extension ReadingHomeView {
                                     .frame(width: 22, height: 22)
                                     .foregroundStyle(LGradients.header)
 
-                                Text("\(readingStats?.currentReadingStreak ?? 0)")
+                                Text("\(currentStreak)")
                                     .font(.system(size: 32, weight: .black, design: .rounded))
                                     .foregroundStyle(LGradients.header)
                             }
@@ -314,7 +405,7 @@ private extension ReadingHomeView {
                         Spacer()
 
                         VStack(alignment: .trailing, spacing: 4) {
-                            Text("\(readingStats?.bestReadingStreak ?? 0)")
+                            Text("\(bestStreak)")
                                 .font(.system(size: 20, weight: .black, design: .rounded))
                                 .foregroundStyle(.white)
 
@@ -331,13 +422,13 @@ private extension ReadingHomeView {
                     HStack(spacing: 10) {
                         todayPill(
                             icon: "openbook",
-                            value: "\(readingStats?.pagesReadToday ?? 0)",
+                            value: "\(pagesReadToday)",
                             label: "pages today"
                         )
 
                         todayPill(
                             icon: "clockfill",
-                            value: "\(readingStats?.minutesReadToday ?? 0)",
+                            value: "\(minutesReadToday)",
                             label: "min today"
                         )
                     }
@@ -357,9 +448,9 @@ private extension ReadingHomeView {
             let weekdayIndex = (calendar.component(.weekday, from: date) + 5) % 7 // Mon=0
             let label = weekdaySymbols[weekdayIndex]
 
-            // Determine if reading happened on this day based on streak
-            let streak = readingStats?.currentReadingStreak ?? 0
-            let isActive = offset < streak
+            let isActive = sessions.contains { session in
+                calendar.isDate(session.date, inSameDayAs: date)
+            }
 
             return (label, isActive)
         }
@@ -870,6 +961,21 @@ struct RecentBookRow: View {
     }
 }
 
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
+    }
+}
+
 // MARK: - Preview
 
 #Preview {
@@ -880,6 +986,7 @@ struct RecentBookRow: View {
             BookQuote.self,
             BookReview.self,
             ReadingStats.self,
-            ReadingGoals.self
+            ReadingGoals.self,
+            ReadingSession.self
         ], inMemory: true)
 }

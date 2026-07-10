@@ -9,6 +9,7 @@ import SwiftUI
 struct ReadingGoalDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @Bindable var goal: ReadingGoals
 
@@ -175,12 +176,12 @@ struct ReadingGoalDetailView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showingEditSheet) {
+        .adaptivePresentation(isPresented: $showingEditSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             AddEditReadingGoalSheet(goal: goal)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
         }
-        .sheet(isPresented: $showingGoalCompletionHistory) {
+        .adaptivePresentation(isPresented: $showingGoalCompletionHistory, useFullScreenCover: horizontalSizeClass == .regular) {
             GoalCompletionHistorySheet(
                 goalTitle: goal.displayTitle,
                 entries: goalCompletionHistory
@@ -302,6 +303,7 @@ struct ReadingGoalDetailView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     DottedGoalProgressBar(value: goal.progressValue)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .frame(height: 12)
 
                     HStack {
@@ -592,7 +594,7 @@ struct ReadingGoalDetailView: View {
 
     private var dottedDivider: some View {
         HStack(spacing: 4) {
-            ForEach(0..<36, id: \.self) { _ in
+            ForEach(0..<51, id: \.self) { _ in
                 Circle()
                     .fill(Color.white.opacity(0.16))
                     .frame(width: 3, height: 3)
@@ -863,5 +865,20 @@ struct GoalDetailMiniStat: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
         )
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
     }
 }

@@ -8,6 +8,7 @@ import SwiftUI
 
 struct BuddyReadingView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     @State private var board: [BuddyAnnouncement] = []
     @State private var myAnnouncements: [BuddyAnnouncement] = []
@@ -39,7 +40,7 @@ struct BuddyReadingView: View {
                     BuddyGroupView(group: group, userId: userId, displayName: displayName)
                 }
             }
-            .sheet(isPresented: $showPostSheet) {
+            .adaptivePresentation(isPresented: $showPostSheet, useFullScreenCover: horizontalSizeClass == .regular) {
                 BuddyPostAnnouncementSheet(
                     userId: userId,
                     displayName: displayName,
@@ -54,7 +55,7 @@ struct BuddyReadingView: View {
                 .presentationDragIndicator(.hidden)
                 .preferredColorScheme(.dark)
             }
-            .sheet(isPresented: $showSetDisplayName) {
+            .adaptivePresentation(isPresented: $showSetDisplayName, useFullScreenCover: horizontalSizeClass == .regular) {
                 SetDisplayNameSheet(
                     userId: userId,
                     isChanging: false,
@@ -72,7 +73,7 @@ struct BuddyReadingView: View {
                 .interactiveDismissDisabled(true)
                 .preferredColorScheme(.dark)
             }
-            .sheet(isPresented: $showChangeDisplayName) {
+            .adaptivePresentation(isPresented: $showChangeDisplayName, useFullScreenCover: horizontalSizeClass == .regular) {
                 SetDisplayNameSheet(
                     userId: userId,
                     isChanging: true,
@@ -653,6 +654,22 @@ struct BuddyReadingView: View {
                     }
                 }
             }
+        }
+    }
+
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
         }
     }
 }

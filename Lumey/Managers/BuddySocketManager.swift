@@ -22,7 +22,7 @@ final class BuddySocketManager: NSObject {
     private let serverURL: String = {
         guard let url = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
               !url.isEmpty else {
-            return "https://lystaria-api-production.up.railway.app"
+            return "https://vox-api-production-31fd.up.railway.app"
         }
         return url
     }()

@@ -63,7 +63,7 @@ final class LumeyBookRecommendationService {
 
     private init() {}
 
-    private let baseURL = "https://lystaria-api-production.up.railway.app"
+    private let baseURL = "https://vox-api-production-31fd.up.railway.app"
 
     func fetchRecommendations(for searchText: String) async throws -> [LumeyBookRecommendation] {
         let trimmedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -24,6 +24,7 @@ private enum GoalNoteFilter: String, CaseIterable, Identifiable {
 struct GoalNotesTimelinePage: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     let goal: ReadingGoals
 
@@ -33,6 +34,7 @@ struct GoalNotesTimelinePage: View {
     @State private var activeFilter: GoalNoteFilter = .all
     @State private var showingAddNote = false
     @State private var selectedNote: GoalNote?
+    @State private var notePendingDelete: GoalNote?
     @State private var newNoteText = ""
 
     private var goalNotes: [GoalNote] {
@@ -78,7 +80,7 @@ struct GoalNotesTimelinePage: View {
         }
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showingAddNote) {
+        .adaptivePresentation(isPresented: $showingAddNote, useFullScreenCover: horizontalSizeClass == .regular) {
             AddGoalNoteSheet(goal: goal, onSave: { text in
                 let note = GoalNote(
                     goalID: goal.id,
@@ -92,7 +94,7 @@ struct GoalNotesTimelinePage: View {
             .presentationDetents([.medium])
             .presentationDragIndicator(.hidden)
         }
-        .sheet(item: $selectedNote) { note in
+        .adaptivePresentation(item: $selectedNote, useFullScreenCover: horizontalSizeClass == .regular) { note in
             GoalNoteDetailSheet(note: note, goal: goal)
                 .presentationDetents(note.noteText.count > 200 ? [.medium, .large] : [.medium])
                 .presentationDragIndicator(.hidden)
@@ -246,6 +248,18 @@ struct GoalNotesTimelinePage: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    Button(role: .destructive) {
+                        deleteNote(note)
+                    } label: {
+                        Label {
+                            Text("Delete")
+                        } icon: {
+                            Image("trash")
+                                .renderingMode(.template)
+                        }
+                    }
+                }
             }
         }
     }
@@ -305,6 +319,44 @@ struct GoalNotesTimelinePage: View {
         if days == 0 { return "Today" }
         if days == 1 { return "Yesterday" }
         return "\(days) Days Ago"
+    }
+    
+    // MARK: - DELETE NOTE HELPER
+    private func deleteNote(_ note: GoalNote) {
+        if selectedNote?.id == note.id {
+            selectedNote = nil
+        }
+
+        modelContext.delete(note)
+        try? modelContext.save()
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
+    }
+
+    @ViewBuilder
+    func adaptivePresentation<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(item: item, content: content)
+        } else {
+            self.sheet(item: item, content: content)
+        }
     }
 }
 
@@ -434,10 +486,31 @@ struct AddGoalNoteSheet: View {
                             .renderingMode(.template)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 17, height: 17)
-                            .foregroundStyle(LGradients.header)
-                            .frame(width: 38, height: 38)
-                            .background(Circle().fill(LColors.glassSurface2))
+                            .frame(width: 24, height: 24)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [LColors.gradientBlue, LColors.gradientPurple],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 46, height: 46)
+                            .background(
+                                Circle()
+                                    .fill(LColors.bg)
+                                    .overlay(
+                                        Circle()
+                                            .strokeBorder(
+                                                LinearGradient(
+                                                    colors: [LColors.gradientBlue, LColors.gradientPurple],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                ),
+                                                lineWidth: 1.35
+                                            )
+                                    )
+                                    .shadow(color: LColors.gradientBlue.opacity(0.20), radius: 14, y: 7)
+                            )
                     }
                     .buttonStyle(.plain)
                 }
@@ -513,10 +586,31 @@ struct GoalNoteDetailSheet: View {
                             .renderingMode(.template)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 17, height: 17)
-                            .foregroundStyle(LGradients.header)
-                            .frame(width: 38, height: 38)
-                            .background(Circle().fill(LColors.glassSurface2))
+                            .frame(width: 24, height: 24)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [LColors.gradientBlue, LColors.gradientPurple],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 46, height: 46)
+                            .background(
+                                Circle()
+                                    .fill(LColors.bg)
+                                    .overlay(
+                                        Circle()
+                                            .strokeBorder(
+                                                LinearGradient(
+                                                    colors: [LColors.gradientBlue, LColors.gradientPurple],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                ),
+                                                lineWidth: 1.35
+                                            )
+                                    )
+                                    .shadow(color: LColors.gradientBlue.opacity(0.20), radius: 14, y: 7)
+                            )
                     }
                     .buttonStyle(.plain)
                 }

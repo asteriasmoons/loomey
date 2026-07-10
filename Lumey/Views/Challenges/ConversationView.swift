@@ -8,13 +8,13 @@ import SwiftUI
 struct ConversationView: View {
     @Environment(\.dismiss) private var dismiss
 
-    let conversation: LumeyConversationDTO
+    let conversation: ConversationDTO
     let currentUserID: String
     let currentUsername: String
     let otherAvatarURL: String?
     let otherAvatarName: String?
 
-    @State private var messages: [LumeyDirectMessageDTO] = []
+    @State private var messages: [DirectMessageDTO] = []
     @State private var messageText = ""
     @State private var isLoading = false
     @State private var isSending = false
@@ -78,7 +78,7 @@ struct ConversationView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            LumeyUserAvatarView(
+            UserAvatarView(
                 avatarURL: otherAvatarURL,
                 avatarName: otherAvatarName,
                 size: 36,
@@ -126,7 +126,7 @@ struct ConversationView: View {
 
     // MARK: - Message Bubble
 
-    private func messageBubble(_ message: LumeyDirectMessageDTO) -> some View {
+    private func messageBubble(_ message: DirectMessageDTO) -> some View {
         let isMine = message.senderUserID == currentUserID
 
         return HStack {

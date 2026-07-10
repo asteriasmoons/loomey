@@ -9,6 +9,7 @@ import SwiftData
 struct ChallengeSubmissionSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var appState: AppState
 
     let challenge: ReadingChallenge
@@ -114,7 +115,7 @@ struct ChallengeSubmissionSheet: View {
                 }
             }
         }
-        .sheet(isPresented: $showResult) {
+        .adaptivePresentation(isPresented: $showResult, useFullScreenCover: horizontalSizeClass == .regular) {
             if let submission = resultSubmission {
                 ChallengeSubmissionResultView(submission: submission, challenge: challenge)
                     .presentationDetents([.medium])
@@ -249,7 +250,20 @@ struct ChallengeSubmissionSheet: View {
 
     private var sessionPickerSection: some View {
         pickerSection(title: "Link Reading Sessions", icon: "clockfill") {
-            let windowSessions = allSessions.filter { $0.date >= entry.startDate && $0.date <= entry.endDate }
+            let calendar = Calendar.current
+
+            let startOfWindow = calendar.startOfDay(for: entry.startDate)
+
+            let endOfWindow = calendar.date(
+                bySettingHour: 23,
+                minute: 59,
+                second: 59,
+                of: entry.endDate
+            ) ?? entry.endDate
+
+            let windowSessions = allSessions.filter { session in
+                session.date >= startOfWindow && session.date <= endOfWindow
+            }
 
             if windowSessions.isEmpty {
                 Text("No sessions found in the challenge window")
@@ -475,6 +489,7 @@ struct ChallengeSubmissionSheet: View {
 
                 content()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -492,10 +507,42 @@ struct ChallengeSubmissionSheet: View {
 
     private func submitEntry() {
         isSubmitting = true
+        
+        print("===== SUBMIT ENTRY START =====")
+        print("Selected Book IDs:", selectedBookIDs)
+        print("Selected Session IDs:", selectedSessionIDs)
+        print("Selected Review IDs:", selectedReviewIDs)
+        print("Selected Reading List IDs:", selectedReadingListIDs)
+        print("Submission Note:", submissionNote)
 
         let selectedBooks = allBooks.filter { selectedBookIDs.contains($0.id) }
-        let proofParts = selectedBooks.map { "\($0.title) by \($0.author)" }
+        let selectedSessions = allSessions.filter { selectedSessionIDs.contains($0.id) }
+
+        let bookProofParts = selectedBooks.map {
+            "\($0.title) by \($0.author)"
+        }
+
+        let sessionProofParts = selectedSessions.map { session in
+            let title = session.linkedBookTitle.isEmpty ? "Reading Session" : session.linkedBookTitle
+            return "\(title) • \(session.durationMinutes) min • \(session.pagesRead) pages"
+        }
+
+        let proofParts = bookProofParts + sessionProofParts
         let proofSummary = proofParts.joined(separator: ", ")
+
+        print("Selected Books Count:", selectedBooks.count)
+        print("Selected Sessions Count:", selectedSessions.count)
+
+        for session in selectedSessions {
+            print("SESSION SELECTED:")
+            print("ID:", session.id)
+            print("Book:", session.linkedBookTitle)
+            print("Minutes:", session.durationMinutes)
+            print("Pages:", session.pagesRead)
+            print("Date:", session.date)
+        }
+
+        print("Proof Summary Being Saved:", proofSummary)
 
         let submission = ChallengeSubmission(
             challengeID: challenge.id,
@@ -510,8 +557,14 @@ struct ChallengeSubmissionSheet: View {
             submissionNote: submissionNote,
             proofSummary: proofSummary
         )
+        
+        print("SUBMISSION CREATED:")
+        print("Submission Linked Session IDs:", submission.linkedSessionIDs)
+        print("Submission Proof Summary:", submission.proofSummary)
+        print("===== SUBMIT ENTRY BEFORE SAVE =====")
 
         modelContext.insert(submission)
+        print("===== SUBMISSION SAVED =====")
         try? modelContext.save()
 
         let manager = ChallengeManager(modelContext: modelContext)
@@ -528,6 +581,21 @@ struct ChallengeSubmissionSheet: View {
                 resultSubmission = submission
                 showResult = true
             }
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
         }
     }
 }

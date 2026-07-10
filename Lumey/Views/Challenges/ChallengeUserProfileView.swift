@@ -10,13 +10,14 @@ import PhotosUI
 struct ChallengeUserProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var appState: AppState
 
     @State private var selectedAvatarItem: PhotosPickerItem?
     @State private var editedUsername: String = ""
     @State private var isEditingUsername = false
     @State private var isFollowing = false
-    @State private var selectedConversation: LumeyConversationDTO?
+    @State private var selectedConversation: ConversationDTO?
     @State private var isCreatingConversation = false
     @State private var showingMessagesList = false
 
@@ -76,7 +77,7 @@ struct ChallengeUserProfileView: View {
                 }
             }
         }
-        .sheet(item: $selectedConversation) { conversation in
+        .adaptivePresentation(item: $selectedConversation, useFullScreenCover: horizontalSizeClass == .regular) { conversation in
             ConversationView(
                 conversation: conversation,
                 currentUserID: currentUserID,
@@ -87,7 +88,7 @@ struct ChallengeUserProfileView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
         }
-        .sheet(isPresented: $showingMessagesList) {
+        .adaptivePresentation(isPresented: $showingMessagesList, useFullScreenCover: horizontalSizeClass == .regular) {
             MessagesListView()
                 .environmentObject(appState)
                 .presentationDetents([.large])
@@ -321,7 +322,7 @@ struct ChallengeUserProfileView: View {
     }
 
     private var avatarView: some View {
-        LumeyUserAvatarView(
+        UserAvatarView(
             avatarURL: profile.avatarURL,
             avatarName: profile.avatarName,
             size: 104,
@@ -738,6 +739,8 @@ struct ChallengeUserProfileView: View {
         switch status {
         case .approved:
             return "checkwavy"
+        case .inProgress:
+            return "clockfill"
         case .needsMoreInfo:
             return "questionwavy"
         case .rejected:
@@ -748,6 +751,34 @@ struct ChallengeUserProfileView: View {
             return "openbook"
         case .expired:
             return "clockfill"
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
+    }
+
+    @ViewBuilder
+    func adaptivePresentation<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(item: item, content: content)
+        } else {
+            self.sheet(item: item, content: content)
         }
     }
 }

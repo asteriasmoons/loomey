@@ -9,6 +9,7 @@ import UserNotifications
 @MainActor
 struct SprintRoomView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var messages: [SprintMessage] = []
     @State private var activeSprint: Sprint? = nil
@@ -111,7 +112,7 @@ struct SprintRoomView: View {
         .navigationDestination(isPresented: $showLeaderboard) {
             SprintLeaderboardView()
         }
-        .sheet(isPresented: $showMyPoints) {
+        .adaptivePresentation(isPresented: $showMyPoints, useFullScreenCover: horizontalSizeClass == .regular) {
             SprintMyPointsSheet(entry: myLeaderboardEntry, userId: userId, displayName: displayName)
                 .presentationDetents([.height(300)])
                 .presentationDragIndicator(.visible)
@@ -132,7 +133,7 @@ struct SprintRoomView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .sheet(isPresented: $showStartSheet) {
+        .adaptivePresentation(isPresented: $showStartSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             SprintStartSheet(
                 userId: userId,
                 displayName: displayName,
@@ -148,7 +149,7 @@ struct SprintRoomView: View {
             .presentationDragIndicator(.hidden)
             .preferredColorScheme(.dark)
         }
-        .sheet(isPresented: $showJoinSheet) {
+        .adaptivePresentation(isPresented: $showJoinSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             if let sprint = activeSprint {
                 SprintJoinSheet(
                     sprint: sprint,
@@ -166,7 +167,7 @@ struct SprintRoomView: View {
                 .preferredColorScheme(.dark)
             }
         }
-        .sheet(isPresented: $showEndPageSheet) {
+        .adaptivePresentation(isPresented: $showEndPageSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             if let sprint = activeSprint {
                 SprintEndPageSheet(
                     sprint: sprint,
@@ -182,7 +183,7 @@ struct SprintRoomView: View {
                 .preferredColorScheme(.dark)
             }
         }
-        .sheet(isPresented: $showSetDisplayName) {
+        .adaptivePresentation(isPresented: $showSetDisplayName, useFullScreenCover: horizontalSizeClass == .regular) {
             SetDisplayNameSheet(
                 userId: userId,
                 isChanging: false,
@@ -200,7 +201,7 @@ struct SprintRoomView: View {
             .interactiveDismissDisabled(true)
             .preferredColorScheme(.dark)
         }
-        .sheet(isPresented: $showChangeDisplayName) {
+        .adaptivePresentation(isPresented: $showChangeDisplayName, useFullScreenCover: horizontalSizeClass == .regular) {
             SetDisplayNameSheet(
                 userId: userId,
                 isChanging: true,
@@ -753,9 +754,26 @@ struct SprintRoomView: View {
     }
 }
 
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
+    }
+}
+
 // MARK: - My Points Sheet
 
 struct SprintMyPointsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
     let initialEntry: SprintLeaderboardEntry?
     let userId: String
     let displayName: String
@@ -776,10 +794,37 @@ struct SprintMyPointsSheet: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
+                HStack {
+                    Spacer()
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image("xmarkwavy")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 17, height: 17)
+                            .foregroundStyle(LGradients.header)
+                            .frame(width: 40, height: 40)
+                            .background(
+                                Circle()
+                                    .fill(LColors.bg)
+                                    .overlay(
+                                        Circle()
+                                            .strokeBorder(LGradients.header, lineWidth: 1.35)
+                                    )
+                                    .shadow(color: LColors.gradientBlue.opacity(0.20), radius: 14, y: 7)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, LSpacing.pageHorizontal)
+                .padding(.top, 10)
+
                 Text("My Sprint Points")
                     .font(.system(size: 22, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
-                    .padding(.top, 8)
 
                 if isLoading {
                     ProgressView()

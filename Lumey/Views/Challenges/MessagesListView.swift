@@ -7,14 +7,15 @@ import SwiftUI
 
 struct MessagesListView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var appState: AppState
 
-    @State private var conversations: [LumeyConversationDTO] = []
-    @State private var messageableUsers: [LumeyMessageableUserDTO] = []
+    @State private var conversations: [ConversationDTO] = []
+    @State private var messageableUsers: [MessageableUserDTO] = []
     @State private var isLoading = false
     @State private var showingNewConversation = false
-    @State private var selectedConversation: LumeyConversationDTO?
-    @State private var selectedConversationUser: LumeyMessageableUserDTO?
+    @State private var selectedConversation: ConversationDTO?
+    @State private var selectedConversationUser: MessageableUserDTO?
 
     private var currentUserID: String {
         appState.currentAppleUserId ?? "local-user"
@@ -57,12 +58,12 @@ struct MessagesListView: View {
             await loadConversations()
             await loadMessageableUsers()
         }
-        .sheet(isPresented: $showingNewConversation) {
+        .adaptivePresentation(isPresented: $showingNewConversation, useFullScreenCover: horizontalSizeClass == .regular) {
             NewConversationSheet(
                 messageableUsers: messageableUsers,
                 currentUserID: currentUserID,
                 currentUsername: currentUsername,
-                onConversationCreated: { conversation in
+                onConversationCreated: { (conversation: ConversationDTO) in
                     selectedConversation = conversation
                     showingNewConversation = false
                     Task { await loadConversations() }
@@ -71,7 +72,7 @@ struct MessagesListView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.hidden)
         }
-        .sheet(item: $selectedConversation) { conversation in
+        .adaptivePresentation(item: $selectedConversation, useFullScreenCover: horizontalSizeClass == .regular) { conversation in
             ConversationView(
                 conversation: conversation,
                 currentUserID: currentUserID,
@@ -154,7 +155,7 @@ struct MessagesListView: View {
 
     // MARK: - Conversation Row
 
-    private func conversationRow(_ conversation: LumeyConversationDTO) -> some View {
+    private func conversationRow(_ conversation: ConversationDTO) -> some View {
         let otherUsername = conversation.otherUsername(currentUserID: currentUserID)
         let unread = conversation.unreadCount(for: currentUserID)
 
@@ -164,7 +165,7 @@ struct MessagesListView: View {
         } label: {
             GlassCard(padding: 14) {
                 HStack(spacing: 12) {
-                    LumeyUserAvatarView(
+                    UserAvatarView(
                         avatarURL: messageableUser(for: conversation)?.avatarURL,
                         avatarName: messageableUser(for: conversation)?.avatarName,
                         size: 40,
@@ -211,7 +212,7 @@ struct MessagesListView: View {
         .buttonStyle(.plain)
     }
     
-    private func messageableUser(for conversation: LumeyConversationDTO) -> LumeyMessageableUserDTO? {
+    private func messageableUser(for conversation: ConversationDTO) -> MessageableUserDTO? {
         let otherUserID = conversation.participantA == currentUserID
             ? conversation.participantB
             : conversation.participantA
@@ -295,20 +296,48 @@ struct MessagesListView: View {
     }
 }
 
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
+    }
+
+    @ViewBuilder
+    func adaptivePresentation<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(item: item, content: content)
+        } else {
+            self.sheet(item: item, content: content)
+        }
+    }
+}
+
 // MARK: - New Conversation Sheet
 
 private struct NewConversationSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let messageableUsers: [LumeyMessageableUserDTO]
+    let messageableUsers: [MessageableUserDTO]
     let currentUserID: String
     let currentUsername: String
-    let onConversationCreated: (LumeyConversationDTO) -> Void
+    let onConversationCreated: (ConversationDTO) -> Void
 
     @State private var searchText = ""
     @State private var isCreating = false
 
-    private var filteredUsers: [LumeyMessageableUserDTO] {
+    private var filteredUsers: [MessageableUserDTO] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return messageableUsers }
         return messageableUsers.filter { $0.username.lowercased().contains(trimmed) }
@@ -383,7 +412,7 @@ private struct NewConversationSheet: View {
                             } label: {
                                 GlassCard(padding: 12) {
                                     HStack(spacing: 12) {
-                                        LumeyUserAvatarView(
+                                        UserAvatarView(
                                             avatarURL: user.avatarURL,
                                             avatarName: user.avatarName,
                                             size: 34,
@@ -425,7 +454,7 @@ private struct NewConversationSheet: View {
     }
 
     @MainActor
-    private func startConversation(with user: LumeyMessageableUserDTO) async {
+    private func startConversation(with user: MessageableUserDTO) async {
         guard !isCreating else { return }
         isCreating = true
 

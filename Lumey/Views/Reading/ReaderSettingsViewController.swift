@@ -109,29 +109,53 @@ final class ReaderSettingsViewController: UIViewController {
         container.addSubview(label)
         label.translatesAutoresizingMaskIntoConstraints = false
         
-        let themeStack = UIStackView()
-        themeStack.axis = .horizontal
-        themeStack.spacing = 16
-        themeStack.alignment = .center
-        themeStack.distribution = .fillEqually
-        themeStack.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(themeStack)
+        let gridStack = UIStackView()
+        gridStack.axis = .vertical
+        gridStack.spacing = 14
+        gridStack.alignment = .fill
+        gridStack.distribution = .fillEqually
+        gridStack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(gridStack)
         
-        for theme in ReaderTheme.allCases {
-            let themeView = buildThemeSwatch(theme)
-            themeStack.addArrangedSubview(themeView)
-            themeViews[theme] = themeView
+        let themes = Array(ReaderTheme.allCases)
+        let rows = stride(from: 0, to: themes.count, by: 4).map {
+            Array(themes[$0..<min($0 + 4, themes.count)])
         }
+        
+        for rowThemes in rows {
+            let rowStack = UIStackView()
+            rowStack.axis = .horizontal
+            rowStack.spacing = 16
+            rowStack.alignment = .center
+            rowStack.distribution = .fillEqually
+            
+            for theme in rowThemes {
+                let themeView = buildThemeSwatch(theme)
+                rowStack.addArrangedSubview(themeView)
+                themeViews[theme] = themeView
+            }
+            
+            if rowThemes.count < 4 {
+                for _ in 0..<(4 - rowThemes.count) {
+                    let spacer = UIView()
+                    rowStack.addArrangedSubview(spacer)
+                }
+            }
+            
+            gridStack.addArrangedSubview(rowStack)
+        }
+        
+        let gridHeight = CGFloat(rows.count) * 80 + CGFloat(max(rows.count - 1, 0)) * 14
         
         NSLayoutConstraint.activate([
             label.topAnchor.constraint(equalTo: container.topAnchor),
             label.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             
-            themeStack.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 14),
-            themeStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            themeStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            themeStack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            themeStack.heightAnchor.constraint(equalToConstant: 80)
+            gridStack.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 14),
+            gridStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            gridStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            gridStack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            gridStack.heightAnchor.constraint(equalToConstant: gridHeight)
         ])
         
         return container

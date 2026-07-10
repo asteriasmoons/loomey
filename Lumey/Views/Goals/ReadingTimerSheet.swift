@@ -9,6 +9,7 @@ import SwiftData
 struct ReadingTimerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @StateObject private var timer = ReadingTimerManager.shared
 
@@ -64,7 +65,7 @@ struct ReadingTimerSheet: View {
                 }
             }
         }
-        .sheet(isPresented: $showingSaveSheet) {
+        .adaptivePresentation(isPresented: $showingSaveSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             SaveSessionSheet(
                 goals: goals,
                 books: books,
@@ -827,5 +828,20 @@ struct SaveSessionSheet: View {
         
         modelContext.insert(history)
         try? modelContext.save()
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
     }
 }

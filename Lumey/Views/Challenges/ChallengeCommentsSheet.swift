@@ -420,7 +420,7 @@ struct ChallengeCommentsSheet: View {
     }
 
     private func commentAvatar(for comment: ChallengeCommentDTO, size: CGFloat) -> some View {
-        LumeyUserAvatarView(
+        UserAvatarView(
             avatarURL: resolvedAvatarURL(for: comment),
             avatarName: resolvedAvatarName(for: comment),
             size: size,

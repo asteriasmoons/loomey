@@ -61,6 +61,14 @@ final class ChallengeManager: ObservableObject {
         entry: ChallengeEntry,
         submission: ChallengeSubmission
     ) async {
+        print("===== MANAGER SUBMIT START =====")
+        print("Challenge:", challenge.title)
+        print("Requirement:", challenge.requirementText)
+        print("Submission linkedBookIDs:", submission.linkedBookIDs)
+        print("Submission linkedSessionIDs:", submission.linkedSessionIDs)
+        print("Submission proofSummary:", submission.proofSummary)
+        print("Submission note:", submission.submissionNote)
+
         isValidating = true
         defer { isValidating = false }
 
@@ -79,6 +87,11 @@ final class ChallengeManager: ObservableObject {
         switch result {
         case .approved(let message):
             approveSubmission(submission, entry: entry, challenge: challenge, message: message)
+
+        case .inProgress(let message):
+            submission.validationStatus = .inProgress
+            submission.validationMessage = message
+            entry.status = .inProgress
 
         case .needsMoreInfo(let message):
             submission.validationStatus = .needsMoreInfo
@@ -112,6 +125,19 @@ final class ChallengeManager: ObservableObject {
         let allBooks = (try? modelContext.fetch(descriptor)) ?? []
         let linkedBooks = allBooks.filter { submission.linkedBookIDs.contains($0.id) }
 
+        let sessionDescriptor = FetchDescriptor<ReadingSession>()
+        let allSessions = (try? modelContext.fetch(sessionDescriptor)) ?? []
+        let linkedSessions = allSessions.filter { submission.linkedSessionIDs.contains($0.id) }
+
+        print("===== MANAGER AI VALIDATION =====")
+        print("All sessions count:", allSessions.count)
+        print("Submission linkedSessionIDs:", submission.linkedSessionIDs)
+        print("Resolved linkedSessions count:", linkedSessions.count)
+
+        for session in linkedSessions {
+            print("Resolved session:", session.linkedBookTitle, "\(session.durationMinutes) min", "\(session.pagesRead) pages", session.date)
+        }
+
         // Fetch review text if relevant
         var reviewText: String? = nil
         if !submission.linkedReviewIDs.isEmpty {
@@ -120,6 +146,10 @@ final class ChallengeManager: ObservableObject {
             let linkedReviews = allReviews.filter { submission.linkedReviewIDs.contains($0.id) }
             reviewText = linkedReviews.map(\.content).joined(separator: "\n\n")
         }
+        
+        print("Books going into AI packet:", linkedBooks.count)
+        print("Sessions available before AI packet:", linkedSessions.count)
+        print("Proof summary before AI packet:", submission.proofSummary)
 
         let packet = ChallengeAIValidationService.buildPacket(
             challenge: challenge,
@@ -134,14 +164,22 @@ final class ChallengeManager: ObservableObject {
             switch aiResult {
             case .approved(let message):
                 approveSubmission(submission, entry: entry, challenge: challenge, message: message)
+
+            case .inProgress(let message):
+                submission.validationStatus = .inProgress
+                submission.validationMessage = message
+                entry.status = .inProgress
+
             case .needsMoreInfo(let message):
                 submission.validationStatus = .needsMoreInfo
                 submission.validationMessage = message
                 entry.status = .needsMoreInfo
+
             case .rejected(let message):
                 submission.validationStatus = .rejected
                 submission.validationMessage = message
                 entry.status = .rejected
+
             case .requiresAI:
                 // Shouldn't happen from AI, but handle gracefully
                 submission.validationStatus = .needsMoreInfo

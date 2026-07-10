@@ -9,6 +9,7 @@ import SwiftData
 struct AddEditReadingGoalSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     let goal: ReadingGoals?
     
@@ -121,7 +122,7 @@ struct AddEditReadingGoalSheet: View {
         .task(id: goal?.id) {
             loadGoal()
         }
-        .sheet(isPresented: $showingIconPicker) {
+        .adaptivePresentation(isPresented: $showingIconPicker, useFullScreenCover: horizontalSizeClass == .regular) {
             IconPickerView(selectedIcon: $iconName)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
@@ -564,5 +565,20 @@ struct AddEditReadingGoalSheet: View {
         )
         
         modelContext.insert(history)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
     }
 }

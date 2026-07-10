@@ -9,6 +9,7 @@ import SwiftData
 struct AddEditReadingListSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     let list: ReadingList?
     
@@ -83,7 +84,7 @@ struct AddEditReadingListSheet: View {
             }
         }
         .task(id: list?.id) { loadList() }
-        .sheet(isPresented: $showingIconPicker) {
+        .adaptivePresentation(isPresented: $showingIconPicker, useFullScreenCover: horizontalSizeClass == .regular) {
             IconPickerView(selectedIcon: $iconName)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
@@ -353,6 +354,21 @@ struct AddEditReadingListSheet: View {
             if !selectedBookIDs.contains(book.id) {
                 selectedBookIDs.append(book.id)
             }
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
         }
     }
 }

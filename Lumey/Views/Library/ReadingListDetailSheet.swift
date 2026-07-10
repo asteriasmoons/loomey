@@ -9,6 +9,7 @@ import SwiftData
 struct ReadingListDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     @Bindable var list: ReadingList
     
@@ -70,7 +71,7 @@ struct ReadingListDetailSheet: View {
                 }
             }
         }
-        .sheet(isPresented: $showingEditSheet) {
+        .adaptivePresentation(isPresented: $showingEditSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             AddEditReadingListSheet(list: list)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
@@ -422,5 +423,20 @@ struct ListDetailMiniStat: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
         )
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
     }
 }

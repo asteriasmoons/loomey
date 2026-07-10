@@ -10,6 +10,7 @@ import PhotosUI
 struct ChallengesFeedView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var appState: AppState
 
     @Query(sort: \ChallengeSubmission.submittedDate, order: .reverse)
@@ -88,7 +89,7 @@ struct ChallengesFeedView: View {
     }
 
     private var isAdmin: Bool {
-        currentUserID == LumeyAdmin.adminUserID
+        currentUserID == VoxAdmin.adminUserID
     }
     
     private func bookTitle(for id: String?) -> String? {
@@ -167,7 +168,7 @@ struct ChallengesFeedView: View {
         .task {
             await loadFeed()
         }
-        .sheet(item: $selectedFeedItemForComments) { feedItem in
+        .adaptivePresentation(item: $selectedFeedItemForComments, useFullScreenCover: horizontalSizeClass == .regular) { feedItem in
             ChallengeCommentsSheet(
                 feedItem: feedItem,
                 post: postDTO(for: feedItem),
@@ -202,7 +203,7 @@ struct ChallengesFeedView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
         }
-        .sheet(isPresented: $showingAnnouncementIconPicker) {
+        .adaptivePresentation(isPresented: $showingAnnouncementIconPicker, useFullScreenCover: horizontalSizeClass == .regular) {
             AnnouncementIconInsertPicker { iconName in
                 announcementBody.append("{{" + iconName + "}}")
                 showingAnnouncementIconPicker = false
@@ -1258,3 +1259,33 @@ private struct InlineChallengeFeedPostComposer: View {
     }
 }
 
+
+
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            self.sheet(isPresented: isPresented, content: content)
+        }
+    }
+
+    @ViewBuilder
+    func adaptivePresentation<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(item: item, content: content)
+        } else {
+            self.sheet(item: item, content: content)
+        }
+    }
+}

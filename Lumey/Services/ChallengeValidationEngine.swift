@@ -69,10 +69,20 @@ final class ChallengeValidationEngine {
     ) -> ChallengeValidationResult {
 
         // Filter sessions within challenge window
-        let windowSessions = sessions.filter { $0.date >= entry.startDate && $0.date <= entry.endDate }
+        let windowSessions = sessionsInChallengeWindow(sessions, entry: entry)
 
-        if let requiredCount = challenge.requiredSessionCount, windowSessions.count < requiredCount {
-            return .needsMoreInfo("You've logged \(windowSessions.count) of \(requiredCount) required reading sessions during this challenge window.")
+        if let requiredCount = challenge.requiredSessionCount,
+           windowSessions.count < requiredCount {
+
+            if windowSessions.isEmpty {
+                return .needsMoreInfo(
+                    "No qualifying reading sessions were found during this challenge window."
+                )
+            }
+
+            return .inProgress(
+                "You've logged \(windowSessions.count) of \(requiredCount) required reading sessions during this challenge window."
+            )
         }
 
         if let requiredMinutes = challenge.requiredSessionMinutes {
@@ -102,7 +112,7 @@ final class ChallengeValidationEngine {
         books: [Book]
     ) -> ChallengeValidationResult {
 
-        let windowSessions = sessions.filter { $0.date >= entry.startDate && $0.date <= entry.endDate }
+        let windowSessions = sessionsInChallengeWindow(sessions, entry: entry)
         let totalPages = windowSessions.reduce(0) { $0 + $1.pagesRead }
 
         guard let requiredPages = challenge.requiredPageCount else {
@@ -110,7 +120,16 @@ final class ChallengeValidationEngine {
         }
 
         if totalPages < requiredPages {
-            return .needsMoreInfo("You've read \(totalPages) of \(requiredPages) required pages during the challenge window.")
+
+            if totalPages == 0 {
+                return .needsMoreInfo(
+                    "No pages were found during the challenge window."
+                )
+            }
+
+            return .inProgress(
+                "You've read \(totalPages) of \(requiredPages) required pages during the challenge window."
+            )
         }
 
         return .approved("Amazing! You've read \(totalPages) pages — well above the \(requiredPages) page goal.")
@@ -139,7 +158,16 @@ final class ChallengeValidationEngine {
         }
 
         if finishedBooks.count < requiredCount {
-            return .needsMoreInfo("You've finished \(finishedBooks.count) of \(requiredCount) required books during the challenge window.")
+
+            if finishedBooks.isEmpty {
+                return .needsMoreInfo(
+                    "No finished books were found during the challenge window."
+                )
+            }
+
+            return .inProgress(
+                "You've finished \(finishedBooks.count) of \(requiredCount) required books during the challenge window."
+            )
         }
 
         return .approved("Incredible! You finished \(finishedBooks.count) books during this challenge.")
@@ -451,10 +479,20 @@ final class ChallengeValidationEngine {
         submission: ChallengeSubmission
     ) -> ChallengeValidationResult {
 
-        let windowSessions = sessions.filter { $0.date >= entry.startDate && $0.date <= entry.endDate }
+        let windowSessions = sessionsInChallengeWindow(sessions, entry: entry)
 
-        if let requiredCount = challenge.requiredSessionCount, windowSessions.count < requiredCount {
-            return .needsMoreInfo("You've logged \(windowSessions.count) of \(requiredCount) required reading sessions.")
+        if let requiredCount = challenge.requiredSessionCount,
+           windowSessions.count < requiredCount {
+
+            if windowSessions.isEmpty {
+                return .needsMoreInfo(
+                    "No qualifying reading sessions were found."
+                )
+            }
+
+            return .inProgress(
+                "You've logged \(windowSessions.count) of \(requiredCount) required reading sessions."
+            )
         }
 
         if challenge.requiresAIValidation {
@@ -495,6 +533,26 @@ final class ChallengeValidationEngine {
         let descriptor = FetchDescriptor<ReadingList>()
         let allLists = (try? modelContext.fetch(descriptor)) ?? []
         return allLists.filter { ids.contains($0.id) }
+    }
+    
+    private func sessionsInChallengeWindow(
+        _ sessions: [ReadingSession],
+        entry: ChallengeEntry
+    ) -> [ReadingSession] {
+        let calendar = Calendar.current
+
+        let start = calendar.startOfDay(for: entry.startDate)
+
+        let end = calendar.date(
+            bySettingHour: 23,
+            minute: 59,
+            second: 59,
+            of: entry.endDate
+        ) ?? entry.endDate
+
+        return sessions.filter {
+            $0.date >= start && $0.date <= end
+        }
     }
 
     // MARK: - Streak Helper
