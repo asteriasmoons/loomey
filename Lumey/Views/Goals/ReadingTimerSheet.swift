@@ -666,6 +666,9 @@ struct SaveSessionSheet: View {
         modelContext.insert(session)
         updateSelectedBookProgress(to: enteredEndPage)
 
+        // Fetch or create ReadingStats early so goal streak bridging can reference it
+        let stats = ReadingStats.fetchOrCreate(in: modelContext)
+
         // Update linked goal
         if let goal = selectedGoal {
             let previousValue = goal.currentValue
@@ -709,8 +712,12 @@ struct SaveSessionSheet: View {
             }
             
             if goal.type == .streak {
-                goal.updateStreak(completedOn: sessionDate)
-                
+                let shouldBridge: Bool = {
+                    guard let last = goal.lastCompletedDate else { return false }
+                    return stats.shouldBridgeStreakGap(from: last, to: sessionDate)
+                }()
+                goal.updateStreak(completedOn: sessionDate, bridgeBreakGap: shouldBridge)
+
                 if previousStreak != goal.currentStreak || previousBestStreak != goal.bestStreak {
                     insertGoalHistory(
                         for: goal,
@@ -741,15 +748,7 @@ struct SaveSessionSheet: View {
             }
         }
 
-        // Update ReadingStats singleton
-        let stats: ReadingStats
-        if let existing = try? modelContext.fetch(FetchDescriptor<ReadingStats>()).first {
-            stats = existing
-        } else {
-            stats = ReadingStats()
-            modelContext.insert(stats)
-        }
-
+        // Update ReadingStats
         stats.totalMinutesRead += prefillMinutes
         stats.totalPagesRead += pages
         stats.totalReadingSessions += 1
@@ -764,6 +763,10 @@ struct SaveSessionSheet: View {
         let cal = Calendar.current
         if let last = stats.lastReadingDate, cal.isDateInYesterday(last) || cal.isDateInToday(last) {
             if !cal.isDateInToday(last) { stats.currentReadingStreak += 1 }
+        } else if let last = stats.lastReadingDate,
+                  stats.readingBreakStreakValue > 0,
+                  stats.shouldBridgeStreakGap(from: last, to: sessionDate) {
+            stats.currentReadingStreak = stats.readingBreakStreakValue + 1
         } else {
             stats.currentReadingStreak = 1
         }

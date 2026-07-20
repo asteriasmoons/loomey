@@ -17,6 +17,8 @@ final class ReaderSettingsViewController: UIViewController {
     private var fontButtons: [ReaderFont: UIButton] = [:]
     private var themeViews: [ReaderTheme: UIView] = [:]
     private var titleLabel: UILabel?
+
+    private let themeColumns = 5
     
     init(
         settings: ReaderSettings,
@@ -98,6 +100,8 @@ final class ReaderSettingsViewController: UIViewController {
         contentStack.addArrangedSubview(buildThemeSection())
         contentStack.addArrangedSubview(buildFontSizeSection())
         contentStack.addArrangedSubview(buildFontSection())
+        contentStack.addArrangedSubview(buildSpacingSection())
+        contentStack.addArrangedSubview(buildJustifySection())
     }
     
     // MARK: - Theme Section
@@ -111,21 +115,21 @@ final class ReaderSettingsViewController: UIViewController {
         
         let gridStack = UIStackView()
         gridStack.axis = .vertical
-        gridStack.spacing = 14
+        gridStack.spacing = 12
         gridStack.alignment = .fill
         gridStack.distribution = .fillEqually
         gridStack.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(gridStack)
         
         let themes = Array(ReaderTheme.allCases)
-        let rows = stride(from: 0, to: themes.count, by: 4).map {
-            Array(themes[$0..<min($0 + 4, themes.count)])
+        let rows = stride(from: 0, to: themes.count, by: themeColumns).map {
+            Array(themes[$0..<min($0 + themeColumns, themes.count)])
         }
         
         for rowThemes in rows {
             let rowStack = UIStackView()
             rowStack.axis = .horizontal
-            rowStack.spacing = 16
+            rowStack.spacing = 10
             rowStack.alignment = .center
             rowStack.distribution = .fillEqually
             
@@ -135,8 +139,8 @@ final class ReaderSettingsViewController: UIViewController {
                 themeViews[theme] = themeView
             }
             
-            if rowThemes.count < 4 {
-                for _ in 0..<(4 - rowThemes.count) {
+            if rowThemes.count < themeColumns {
+                for _ in 0..<(themeColumns - rowThemes.count) {
                     let spacer = UIView()
                     rowStack.addArrangedSubview(spacer)
                 }
@@ -145,7 +149,7 @@ final class ReaderSettingsViewController: UIViewController {
             gridStack.addArrangedSubview(rowStack)
         }
         
-        let gridHeight = CGFloat(rows.count) * 80 + CGFloat(max(rows.count - 1, 0)) * 14
+        let gridHeight = CGFloat(rows.count) * 70 + CGFloat(max(rows.count - 1, 0)) * 12
         
         NSLayoutConstraint.activate([
             label.topAnchor.constraint(equalTo: container.topAnchor),
@@ -164,27 +168,34 @@ final class ReaderSettingsViewController: UIViewController {
     private func buildThemeSwatch(_ theme: ReaderTheme) -> UIView {
         let wrapper = UIView()
         wrapper.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.tag = ReaderTheme.allCases.firstIndex(of: theme) ?? 0
+        wrapper.accessibilityLabel = "\(theme.rawValue) reader theme"
+        wrapper.accessibilityTraits = theme == settings.theme ? [.button, .selected] : .button
+        wrapper.isAccessibilityElement = true
+        wrapper.isUserInteractionEnabled = true
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(themeTapped(_:)))
+        wrapper.addGestureRecognizer(tap)
         
         let circle = UIView()
         circle.backgroundColor = theme.swatchColor
-        circle.layer.cornerRadius = 28
+        circle.layer.cornerRadius = 22
         circle.layer.borderWidth = theme == settings.theme ? 3 : 1.5
         circle.layer.borderColor = theme == settings.theme
             ? tintGradientColor().cgColor
             : theme.swatchBorderColor.cgColor
         circle.translatesAutoresizingMaskIntoConstraints = false
-        circle.tag = ReaderTheme.allCases.firstIndex(of: theme) ?? 0
-        
-        let tap = UITapGestureRecognizer(target: self, action: #selector(themeTapped(_:)))
-        circle.addGestureRecognizer(tap)
-        circle.isUserInteractionEnabled = true
+        circle.isUserInteractionEnabled = false
         
         let nameLabel = UILabel()
         nameLabel.text = theme.rawValue
         nameLabel.textColor = theme == settings.theme ? primaryReaderUIColor : secondaryReaderUIColor
         nameLabel.font = UIFont.rounded(size: 11, weight: theme == settings.theme ? .black : .bold)
         nameLabel.textAlignment = .center
+        nameLabel.adjustsFontSizeToFitWidth = true
+        nameLabel.minimumScaleFactor = 0.72
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        nameLabel.isUserInteractionEnabled = false
         
         wrapper.addSubview(circle)
         wrapper.addSubview(nameLabel)
@@ -196,19 +207,20 @@ final class ReaderSettingsViewController: UIViewController {
             NSLayoutConstraint.activate([
                 check.centerXAnchor.constraint(equalTo: circle.centerXAnchor),
                 check.centerYAnchor.constraint(equalTo: circle.centerYAnchor),
-                check.widthAnchor.constraint(equalToConstant: 18),
-                check.heightAnchor.constraint(equalToConstant: 18)
+                check.widthAnchor.constraint(equalToConstant: 16),
+                check.heightAnchor.constraint(equalToConstant: 16)
             ])
         }
         
         NSLayoutConstraint.activate([
             circle.topAnchor.constraint(equalTo: wrapper.topAnchor),
             circle.centerXAnchor.constraint(equalTo: wrapper.centerXAnchor),
-            circle.widthAnchor.constraint(equalToConstant: 56),
-            circle.heightAnchor.constraint(equalToConstant: 56),
+            circle.widthAnchor.constraint(equalToConstant: 44),
+            circle.heightAnchor.constraint(equalToConstant: 44),
             
-            nameLabel.topAnchor.constraint(equalTo: circle.bottomAnchor, constant: 6),
-            nameLabel.centerXAnchor.constraint(equalTo: wrapper.centerXAnchor),
+            nameLabel.topAnchor.constraint(equalTo: circle.bottomAnchor, constant: 5),
+            nameLabel.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor),
+            nameLabel.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor),
             nameLabel.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor)
         ])
         
@@ -334,6 +346,8 @@ final class ReaderSettingsViewController: UIViewController {
         nameLabel.text = font.displayName
         nameLabel.textColor = isSelected ? primaryReaderUIColor : secondaryReaderUIColor
         nameLabel.isUserInteractionEnabled = false
+        nameLabel.adjustsFontSizeToFitWidth = true
+        nameLabel.minimumScaleFactor = 0.75
         
         if let uiFontName = font.uiFontName {
             nameLabel.font = UIFont(name: uiFontName, size: 15) ?? UIFont.rounded(size: 15, weight: .semibold)
@@ -347,6 +361,7 @@ final class ReaderSettingsViewController: UIViewController {
         NSLayoutConstraint.activate([
             button.heightAnchor.constraint(equalToConstant: 46),
             nameLabel.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 16),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: button.trailingAnchor, constant: -48),
             nameLabel.centerYAnchor.constraint(equalTo: button.centerYAnchor)
         ])
         
@@ -366,8 +381,267 @@ final class ReaderSettingsViewController: UIViewController {
         return button
     }
     
+    // MARK: - Spacing Section
+
+    private func buildSpacingSection() -> UIView {
+        let container = UIView()
+
+        let label = sectionLabel("Spacing")
+        container.addSubview(label)
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let spacingStack = UIStackView()
+        spacingStack.axis = .vertical
+        spacingStack.spacing = 18
+        spacingStack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(spacingStack)
+
+        spacingStack.addArrangedSubview(
+            buildSliderRow(
+                title: "Letter Spacing",
+                value: settings.letterSpacing,
+                range: 0.0...0.5,
+                tag: 100,
+                valueTag: 200,
+                action: #selector(letterSpacingChanged(_:)),
+                formatter: { String(format: "%.2f", $0) }
+            )
+        )
+
+        spacingStack.addArrangedSubview(
+            buildSliderRow(
+                title: "Word Spacing",
+                value: settings.wordSpacing,
+                range: 0.0...1.0,
+                tag: 101,
+                valueTag: 201,
+                action: #selector(wordSpacingChanged(_:)),
+                formatter: { String(format: "%.2f", $0) }
+            )
+        )
+
+        spacingStack.addArrangedSubview(
+            buildSliderRow(
+                title: "Line Height",
+                value: settings.lineHeight,
+                range: 1.0...2.5,
+                tag: 102,
+                valueTag: 202,
+                action: #selector(lineHeightChanged(_:)),
+                formatter: { String(format: "%.1f", $0) }
+            )
+        )
+
+        spacingStack.addArrangedSubview(
+            buildSliderRow(
+                title: "Paragraph Spacing",
+                value: settings.paragraphSpacing,
+                range: 0.0...2.0,
+                tag: 103,
+                valueTag: 203,
+                action: #selector(paragraphSpacingChanged(_:)),
+                formatter: { String(format: "%.1f", $0) }
+            )
+        )
+
+        spacingStack.addArrangedSubview(
+            buildSliderRow(
+                title: "Page Margins",
+                value: settings.pageMargins,
+                range: 0.5...3.0,
+                tag: 104,
+                valueTag: 204,
+                action: #selector(pageMarginsChanged(_:)),
+                formatter: { String(format: "%.1f", $0) }
+            )
+        )
+
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: container.topAnchor),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            spacingStack.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 14),
+            spacingStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            spacingStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            spacingStack.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+
+        return container
+    }
+
+    private func buildSliderRow(
+        title: String,
+        value: Double,
+        range: ClosedRange<Double>,
+        tag: Int,
+        valueTag: Int,
+        action: Selector,
+        formatter: (Double) -> String
+    ) -> UIView {
+        let row = UIView()
+
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.textColor = primaryReaderUIColor
+        titleLabel.font = UIFont.rounded(size: 14, weight: .bold)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let valueLabel = UILabel()
+        valueLabel.text = formatter(value)
+        valueLabel.textColor = secondaryReaderUIColor
+        valueLabel.font = UIFont.rounded(size: 13, weight: .bold)
+        valueLabel.textAlignment = .right
+        valueLabel.tag = valueTag
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        valueLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+        let slider = UISlider()
+        slider.minimumValue = Float(range.lowerBound)
+        slider.maximumValue = Float(range.upperBound)
+        slider.value = Float(value)
+        slider.tag = tag
+        slider.tintColor = tintGradientColor()
+        slider.translatesAutoresizingMaskIntoConstraints = false
+        slider.addTarget(self, action: action, for: .valueChanged)
+
+        let headerStack = UIStackView(arrangedSubviews: [titleLabel, valueLabel])
+        headerStack.axis = .horizontal
+        headerStack.alignment = .center
+        headerStack.translatesAutoresizingMaskIntoConstraints = false
+
+        row.addSubview(headerStack)
+        row.addSubview(slider)
+
+        NSLayoutConstraint.activate([
+            headerStack.topAnchor.constraint(equalTo: row.topAnchor),
+            headerStack.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            headerStack.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+
+            slider.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 6),
+            slider.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            slider.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            slider.bottomAnchor.constraint(equalTo: row.bottomAnchor)
+        ])
+
+        return row
+    }
+
+    // MARK: - Justify Section
+
+    private func buildJustifySection() -> UIView {
+        let container = UIView()
+
+        let label = sectionLabel("Alignment")
+        container.addSubview(label)
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let toggle = UISwitch()
+        toggle.isOn = settings.isJustified
+        toggle.onTintColor = tintGradientColor()
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        toggle.addTarget(self, action: #selector(justifyToggled(_:)), for: .valueChanged)
+
+        let titleLabel = UILabel()
+        titleLabel.text = "Justify Text"
+        titleLabel.textColor = primaryReaderUIColor
+        titleLabel.font = UIFont.rounded(size: 14, weight: .bold)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let row = UIView()
+        row.backgroundColor = softButtonBackground
+        row.layer.cornerRadius = 14
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        row.addSubview(titleLabel)
+        row.addSubview(toggle)
+        container.addSubview(row)
+
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: container.topAnchor),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+
+            row.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 12),
+            row.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            row.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            row.heightAnchor.constraint(equalToConstant: 50),
+
+            titleLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 16),
+            titleLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+
+            toggle.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -16),
+            toggle.centerYAnchor.constraint(equalTo: row.centerYAnchor)
+        ])
+
+        return container
+    }
+
+    // MARK: - Slider Actions
+
+    @objc private func letterSpacingChanged(_ sender: UISlider) {
+        let value = Double(sender.value)
+        settings.letterSpacing = value
+        settings.updatedAt = Date()
+        try? modelContext.save()
+        onPreferencesChanged(settings)
+        if let label = view.viewWithTag(200) as? UILabel {
+            label.text = String(format: "%.2f", value)
+        }
+    }
+
+    @objc private func wordSpacingChanged(_ sender: UISlider) {
+        let value = Double(sender.value)
+        settings.wordSpacing = value
+        settings.updatedAt = Date()
+        try? modelContext.save()
+        onPreferencesChanged(settings)
+        if let label = view.viewWithTag(201) as? UILabel {
+            label.text = String(format: "%.2f", value)
+        }
+    }
+
+    @objc private func lineHeightChanged(_ sender: UISlider) {
+        let value = Double(sender.value)
+        settings.lineHeight = value
+        settings.updatedAt = Date()
+        try? modelContext.save()
+        onPreferencesChanged(settings)
+        if let label = view.viewWithTag(202) as? UILabel {
+            label.text = String(format: "%.1f", value)
+        }
+    }
+
+    @objc private func paragraphSpacingChanged(_ sender: UISlider) {
+        let value = Double(sender.value)
+        settings.paragraphSpacing = value
+        settings.updatedAt = Date()
+        try? modelContext.save()
+        onPreferencesChanged(settings)
+        if let label = view.viewWithTag(203) as? UILabel {
+            label.text = String(format: "%.1f", value)
+        }
+    }
+
+    @objc private func pageMarginsChanged(_ sender: UISlider) {
+        let value = Double(sender.value)
+        settings.pageMargins = value
+        settings.updatedAt = Date()
+        try? modelContext.save()
+        onPreferencesChanged(settings)
+        if let label = view.viewWithTag(204) as? UILabel {
+            label.text = String(format: "%.1f", value)
+        }
+    }
+
+    @objc private func justifyToggled(_ sender: UISwitch) {
+        settings.isJustified = sender.isOn
+        settings.updatedAt = Date()
+        try? modelContext.save()
+        onPreferencesChanged(settings)
+    }
+
     // MARK: - Actions
-    
+
     @objc private func themeTapped(_ gesture: UITapGestureRecognizer) {
         guard let tag = gesture.view?.tag,
               tag < ReaderTheme.allCases.count else { return }
@@ -429,6 +703,8 @@ final class ReaderSettingsViewController: UIViewController {
         contentStack.addArrangedSubview(buildThemeSection())
         contentStack.addArrangedSubview(buildFontSizeSection())
         contentStack.addArrangedSubview(buildFontSection())
+        contentStack.addArrangedSubview(buildSpacingSection())
+        contentStack.addArrangedSubview(buildJustifySection())
     }
     
     private func sectionLabel(_ text: String) -> UILabel {
@@ -441,7 +717,7 @@ final class ReaderSettingsViewController: UIViewController {
     }
     
     private var usesDarkText: Bool {
-        settings.theme == .white
+        !settings.theme.isDark
     }
     
     private var primaryReaderUIColor: UIColor {

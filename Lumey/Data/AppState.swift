@@ -18,6 +18,7 @@ final class AppState: ObservableObject {
     
     @Published private(set) var status: SessionStatus = .checking
     @Published var isPopupPresented: Bool = false
+    @Published var hideTabBar: Bool = false
     
     var currentUser: AuthUser? {
         if case .signedIn(let user) = status {

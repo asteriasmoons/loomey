@@ -6,6 +6,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import WebKit
 import ReadiumShared
 import ReadiumStreamer
 import ReadiumNavigator
@@ -108,17 +109,7 @@ struct ReadiumEPUBReaderView: UIViewControllerRepresentable {
         func resolvedThemeBackground() -> UIColor {
             let descriptor = FetchDescriptor<ReaderSettings>()
             let settings = (try? modelContext.fetch(descriptor))?.first
-            let theme = settings?.theme ?? .dark
-            switch theme {
-            case .white:   return UIColor(lumeyHex: "#FFFFFF")
-            case .sepia:   return UIColor(lumeyHex: "#EDDBCB")
-            case .gray:    return UIColor(lumeyHex: "#303136")
-            case .dark:    return UIColor(lumeyHex: "#020304")
-            case .obsidian: return UIColor(lumeyHex: "#020304")
-            case .ember:   return UIColor(lumeyHex: "#322407")
-            case .violet:  return UIColor(lumeyHex: "#440D5F")
-            case .rose:    return UIColor(lumeyHex: "#75105C")
-            }
+            return (settings?.theme ?? .cocoa).backgroundColor
         }
 
         @MainActor
@@ -188,10 +179,22 @@ struct ReadiumEPUBReaderView: UIViewControllerRepresentable {
 
                 let initialLocation = initialLocationJSON.flatMap { try? Locator(jsonString: $0) }
                 let navigatorCreationStart = CFAbsoluteTimeGetCurrent()
+
+                var config = EPUBNavigatorViewController.Configuration()
+                config.editingActions = EditingAction.defaultActions + [
+                    EditingAction(title: "Highlight", action: #selector(ReadiumReaderChromeViewController.highlightSelection(_:))),
+                    EditingAction(title: "Quote", action: #selector(ReadiumReaderChromeViewController.quoteSelection(_:))),
+                    EditingAction(title: "Add Note", action: #selector(ReadiumReaderChromeViewController.addNoteToSelection(_:)))
+                ]
+                config.fontFamilyDeclarations = bundledReaderFontDeclarations()
+                if usesIPadReaderLayout {
+                    config.readiumCSSRSProperties = iPadReadiumCSSProperties()
+                }
+
                 let navigator = try EPUBNavigatorViewController(
                     publication: publication,
                     initialLocation: initialLocation,
-                    config: EPUBNavigatorViewController.Configuration()
+                    config: config
                 )
                 print("[EPUB Reader] Navigator creation took", String(format: "%.2f", CFAbsoluteTimeGetCurrent() - navigatorCreationStart), "seconds")
 
@@ -215,6 +218,7 @@ struct ReadiumEPUBReaderView: UIViewControllerRepresentable {
                 delegateBridge.onReadingLocationChanged = { [weak chromeController] locator in
                     chromeController?.updateLocationLabel(for: locator)
                     chromeController?.hideReaderLoadingOverlay()
+                    chromeController?.updateBookmarkIndicator()
                 }
                 delegateBridge.onBookmarkRequested = { [weak chromeController] locator in
                     chromeController?.storeBookmark(locator)
@@ -224,6 +228,11 @@ struct ReadiumEPUBReaderView: UIViewControllerRepresentable {
                 navigationController.setViewControllers([chromeController], animated: true)
                 print("[EPUB Reader] Reader presentation took", String(format: "%.2f", CFAbsoluteTimeGetCurrent() - presentationStart), "seconds")
 
+                Task { @MainActor in
+                    await Task.yield()
+                    chromeController.applyAllHighlightDecorations()
+                }
+
                 // Fallback: dismiss the overlay after 2s if locationDidChange hasn't fired yet
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -232,6 +241,50 @@ struct ReadiumEPUBReaderView: UIViewControllerRepresentable {
             } catch {
                 loadingController.showError("Lumey could not start the EPUB reader.\n\n\(error.localizedDescription)")
             }
+        }
+
+        private func bundledReaderFontDeclarations() -> [AnyHTMLFontFamilyDeclaration] {
+            [
+                bundledReaderFontDeclaration(fontFamily: "Hachi Maru Pop", resourceName: "HachiMaruPop-Regular"),
+                bundledReaderFontDeclaration(fontFamily: "Montserrat", resourceName: "Montserrat-Regular"),
+                bundledReaderFontDeclaration(fontFamily: "Quicksand", resourceName: "Quicksand-Regular")
+            ].compactMap { $0 }
+        }
+
+        private func bundledReaderFontDeclaration(
+            fontFamily: String,
+            resourceName: String
+        ) -> AnyHTMLFontFamilyDeclaration? {
+            guard
+                let url = Bundle.main.url(forResource: resourceName, withExtension: "ttf"),
+                let fileURL = FileURL(url: url)
+            else {
+                return nil
+            }
+
+            return CSSFontFamilyDeclaration(
+                fontFamily: FontFamily(rawValue: fontFamily),
+                fontFaces: [
+                    CSSFontFace(
+                        file: fileURL,
+                        style: .normal,
+                        weight: .standard(.normal)
+                    )
+                ]
+            ).eraseToAnyHTMLFontFamilyDeclaration()
+        }
+
+        private var usesIPadReaderLayout: Bool {
+            UIDevice.current.userInterfaceIdiom == .pad
+        }
+
+        private func iPadReadiumCSSProperties() -> CSSRSProperties {
+            CSSRSProperties(
+                colCount: .one,
+                colGap: CSSPxLength(0),
+                pageGutter: CSSPxLength(28),
+                maxLineLength: CSSRemLength(200)
+            )
         }
     }
 }
@@ -299,7 +352,22 @@ final class ReadiumReaderChromeViewController: UIViewController {
     private let topGradientLayer = CAGradientLayer()
     private let bottomGradientLayer = CAGradientLayer()
     private var cachedPositions: [Locator] = []
-    private var positionPageMap: [String: Int] = [:]
+    private var effectiveTotalPages: Int = 0
+    private var displayedPage: Int = 1
+    private var previousTotalProgression: Double?
+    private let bookmarkIndicator: UIImageView = {
+        let imageView = UIImageView(image: UIImage(named: "bookmark")?.withRenderingMode(.alwaysTemplate))
+        imageView.tintColor = .white
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.isHidden = true
+        imageView.alpha = 0
+        imageView.layer.shadowColor = UIColor.black.cgColor
+        imageView.layer.shadowOpacity = 0.34
+        imageView.layer.shadowRadius = 5
+        imageView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        return imageView
+    }()
 
     private var currentSettings: ReaderSettings?
     
@@ -342,6 +410,10 @@ final class ReadiumReaderChromeViewController: UIViewController {
         addChild(navigator)
         // Insert navigator BELOW the overlay so the overlay always wins visually
         view.insertSubview(navigator.view, belowSubview: readerLoadingOverlay)
+        // Keep the WebView completely hidden until it has actually rendered.
+        // This prevents WKWebView's blank black surface from leaking through
+        // during the navigation push transition (~1.5s WebContent launch).
+        navigator.view.isHidden = true
         navigator.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             navigator.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -350,6 +422,10 @@ final class ReadiumReaderChromeViewController: UIViewController {
             navigator.view.bottomAnchor.constraint(equalTo: bottomBar.topAnchor)
         ])
         navigator.didMove(toParent: self)
+        view.bringSubviewToFront(topBar)
+        view.bringSubviewToFront(bottomBar)
+        view.bringSubviewToFront(bookmarkIndicator)
+        view.bringSubviewToFront(readerLoadingOverlay)
 
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(toggleBars))
         tapGesture.cancelsTouchesInView = false
@@ -364,22 +440,22 @@ final class ReadiumReaderChromeViewController: UIViewController {
             case .success(let positions):
                 cachedPositions = positions
 
+                // Readium positions are content-based (~1024 bytes each).
+                // A visual page on iPhone fits less content than on iPad,
+                // so iPhone has more visual pages and iPad has fewer.
+                let isIPad = UIDevice.current.userInterfaceIdiom == .pad
+                let multiplier: Double = isIPad ? 0.65 : 1.7
+                effectiveTotalPages = max(1, Int(round(Double(positions.count) * multiplier)))
+
                 if let locator = navigator.currentLocation {
                     updateLocationLabel(for: locator)
                 }
 
-                for pos in positions {
-                    let href = String(describing: pos.href)
-                    let hrefBase = href.components(separatedBy: "#").first ?? href
-
-                    if positionPageMap[hrefBase] == nil {
-                        positionPageMap[hrefBase] = pos.locations.position ?? 0
-                    }
-                }
+                updateBookmarkIndicator()
 
             case .failure:
                 cachedPositions = []
-                positionPageMap = [:]
+                updateBookmarkIndicator()
             }
         }
     }
@@ -433,6 +509,9 @@ final class ReadiumReaderChromeViewController: UIViewController {
     func hideReaderLoadingOverlay() {
         guard !readerLoadingOverlay.isHidden else { return }
 
+        // Unhide the navigator now that WKWebView has painted
+        navigator.view.isHidden = false
+
         UIView.animate(withDuration: 0.22, animations: {
             self.readerLoadingOverlay.alpha = 0
         }) { _ in
@@ -447,27 +526,47 @@ final class ReadiumReaderChromeViewController: UIViewController {
     }
     
     func updateLocationLabel(for locator: Locator) {
-        let totalPages = cachedPositions.count
-
-        guard totalPages > 0 else {
+        guard effectiveTotalPages > 0 else {
             locationLabel.text = "Reading"
             return
         }
 
-        let pageNumber: Int
-
-        if let position = locator.locations.position, position > 0 {
-            pageNumber = min(position, totalPages)
-        } else if let progression = locator.locations.progression {
-            pageNumber = min(
-                max(1, Int((progression * Double(totalPages)).rounded())),
-                totalPages
-            )
-        } else {
-            pageNumber = 1
+        guard let totalProg = locator.locations.totalProgression else {
+            locationLabel.text = "\(displayedPage) OF \(effectiveTotalPages)"
+            return
         }
 
-        locationLabel.text = "\(pageNumber) OF \(totalPages)"
+        if let prev = previousTotalProgression {
+            let delta = totalProg - prev
+            // Threshold: anything beyond ~3 pages' worth of progression is
+            // a chapter jump (TOC tap, bookmark tap), not a swipe.
+            let jumpThreshold = 3.0 / Double(effectiveTotalPages)
+
+            if abs(delta) <= jumpThreshold {
+                // Normal page turn — increment or decrement by exactly 1
+                if delta > 0.0001 {
+                    displayedPage += 1
+                } else if delta < -0.0001 {
+                    displayedPage -= 1
+                }
+            } else {
+                // Chapter jump — estimate page from progression
+                displayedPage = max(1, Int(totalProg * Double(effectiveTotalPages)) + 1)
+            }
+        } else {
+            // First load — estimate page from progression
+            displayedPage = max(1, Int(totalProg * Double(effectiveTotalPages)) + 1)
+        }
+
+        // Keep in bounds, but if the counter goes past the estimate,
+        // grow the total rather than clamping (avoids stuck page at end)
+        displayedPage = max(1, displayedPage)
+        if displayedPage > effectiveTotalPages {
+            effectiveTotalPages = displayedPage
+        }
+
+        previousTotalProgression = totalProg
+        locationLabel.text = "\(displayedPage) OF \(effectiveTotalPages)"
     }
 
     func storeBookmark(_ locator: Locator) {
@@ -477,16 +576,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
         }
 
         let progression = locator.locations.progression ?? 0
-        let totalPages = cachedPositions.count
-        
-        // Find page number from locator position or compute from progression
-        var pageNumber = 0
-        if let position = locator.locations.position {
-            pageNumber = position
-        } else if totalPages > 0 {
-            pageNumber = max(1, Int((progression * Double(totalPages)).rounded()))
-        }
-        
+
         let bookmark = EPUBBookmark(
             bookID: bookID,
             title: locator.title ?? "Bookmark",
@@ -494,8 +584,8 @@ final class ReadiumReaderChromeViewController: UIViewController {
             locatorJSON: locatorJSON,
             href: String(describing: locator.href),
             progression: progression,
-            pageNumber: pageNumber,
-            totalPages: totalPages
+            pageNumber: displayedPage,
+            totalPages: effectiveTotalPages
         )
 
         modelContext.insert(bookmark)
@@ -503,6 +593,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
         do {
             try modelContext.save()
             showToast("Bookmark saved")
+            updateBookmarkIndicator()
         } catch {
             showToast("Could not save bookmark")
         }
@@ -518,7 +609,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
         topBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(topBar)
         
-        let theme = currentSettings?.theme ?? .dark
+        let theme = currentSettings?.theme ?? .cocoa
 
         topBar.backgroundColor = theme.chromeBackgroundColor
         topBar.layer.borderColor = theme.chromeBorderColor.cgColor
@@ -530,23 +621,18 @@ final class ReadiumReaderChromeViewController: UIViewController {
         titleLabel.font = UIFont.rounded(size: 16, weight: .black)
         titleLabel.numberOfLines = 1
 
-        let closeButton = readerButton(assetName: "xmarkwavy", action: #selector(closeReader))
-        let contentsButton = readerButton(assetName: "sparklybook", action: #selector(showContents))
-        let addBookmarkButton = readerButton(assetName: "starmark", action: #selector(addBookmark))
-        let savedBookmarksButton = readerButton(assetName: "bookmark", action: #selector(showBookmarks))
-        let settingsButton = readerButton(assetName: "togglesettings", action: #selector(showSettings))
+        let menuButton = readerButton(assetName: "dotswavy", action: #selector(showReaderMenu(_:)))
+        menuButton.showsMenuAsPrimaryAction = true
+        menuButton.menu = buildReaderContextMenu()
 
-        let rightStack = UIStackView(arrangedSubviews: [contentsButton, addBookmarkButton, savedBookmarksButton, settingsButton, closeButton])
-        rightStack.axis = .horizontal
-        rightStack.spacing = 4
-        rightStack.alignment = .center
-
-        let headerStack = UIStackView(arrangedSubviews: [titleLabel, rightStack])
+        let headerStack = UIStackView(arrangedSubviews: [titleLabel, menuButton])
         headerStack.axis = .horizontal
         headerStack.alignment = .center
         headerStack.spacing = 12
         headerStack.translatesAutoresizingMaskIntoConstraints = false
         topBar.addSubview(headerStack)
+
+        view.addSubview(bookmarkIndicator)
 
         NSLayoutConstraint.activate([
             topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -558,8 +644,71 @@ final class ReadiumReaderChromeViewController: UIViewController {
             headerStack.bottomAnchor.constraint(equalTo: topBar.bottomAnchor, constant: -12),
             headerStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
 
-            titleLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 38)
+            titleLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 38),
+
+            bookmarkIndicator.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 12),
+            bookmarkIndicator.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
+            bookmarkIndicator.widthAnchor.constraint(equalToConstant: 18),
+            bookmarkIndicator.heightAnchor.constraint(equalToConstant: 28)
         ])
+    }
+
+    private func buildReaderContextMenu() -> UIMenu {
+        let contentsAction = UIAction(
+            title: "Contents",
+            image: UIImage(named: "sparklybook")?.withRenderingMode(.alwaysTemplate)
+        ) { [weak self] _ in
+            self?.showContents()
+        }
+
+        let addBookmarkAction = UIAction(
+            title: "Add Bookmark",
+            image: UIImage(named: "starmark")?.withRenderingMode(.alwaysTemplate)
+        ) { [weak self] _ in
+            self?.addBookmarkWithTitle()
+        }
+
+        let bookmarksAction = UIAction(
+            title: "Bookmarks",
+            image: UIImage(named: "bookmark")?.withRenderingMode(.alwaysTemplate)
+        ) { [weak self] _ in
+            self?.showBookmarks()
+        }
+
+        let notesQuotesAction = UIAction(
+            title: "Notes & Quotes",
+            image: UIImage(named: "linespencil")?.withRenderingMode(.alwaysTemplate)
+        ) { [weak self] _ in
+            self?.showNotesAndQuotes()
+        }
+
+        let settingsAction = UIAction(
+            title: "Settings",
+            image: UIImage(named: "togglesettings")?.withRenderingMode(.alwaysTemplate)
+        ) { [weak self] _ in
+            self?.showSettings()
+        }
+
+        let closeAction = UIAction(
+            title: "Close Reader",
+            image: UIImage(named: "xmarkwavy")?.withRenderingMode(.alwaysTemplate),
+            attributes: .destructive
+        ) { [weak self] _ in
+            self?.closeReader()
+        }
+
+        return UIMenu(children: [
+            contentsAction,
+            addBookmarkAction,
+            bookmarksAction,
+            notesQuotesAction,
+            settingsAction,
+            closeAction
+        ])
+    }
+
+    @objc private func showReaderMenu(_ sender: UIButton) {
+        // Menu is shown automatically via showsMenuAsPrimaryAction
     }
     
     @objc private func showBookmarks() {
@@ -579,6 +728,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
 
         let sheet = ReadiumBookmarksViewController(
             bookmarks: savedBookmarks,
+            theme: currentSettings?.theme ?? .cocoa,
             onSelect: { [weak self] bookmark in
                 self?.dismiss(animated: true) {
                     Task { @MainActor in
@@ -591,6 +741,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
                 bookmark.deletedAt = Date()
                 bookmark.updatedAt = Date()
                 try? self?.modelContext.save()
+                self?.updateBookmarkIndicator()
             }
         )
 
@@ -604,7 +755,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bottomBar)
         
-        let theme = currentSettings?.theme ?? .dark
+        let theme = currentSettings?.theme ?? .cocoa
 
         bottomBar.backgroundColor = theme.chromeBackgroundColor
         bottomBar.layer.borderColor = theme.chromeBorderColor.cgColor
@@ -631,6 +782,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
 
     private func readerButton(assetName: String, action: Selector) -> UIButton {
         let button = LumeyGradientIconButton(assetName: assetName)
+        button.setIconColor(currentSettings?.theme.chromeTextColor ?? .white)
         button.backgroundColor = .clear
         button.layer.cornerRadius = 0
         button.layer.borderWidth = 0
@@ -662,6 +814,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
                 let sheet = ReadiumTableOfContentsViewController(
                     links: links,
                     publication: self.publication,
+                    theme: self.currentSettings?.theme ?? .cocoa,
                     onSelect: { [weak self] link in
                         self?.dismiss(animated: true) {
                             Task { @MainActor in
@@ -688,13 +841,142 @@ final class ReadiumReaderChromeViewController: UIViewController {
         }
     }
 
-    @objc private func addBookmark() {
+    @objc private func addBookmarkWithTitle() {
         guard let locator = navigator.currentLocation else {
             showToast("No reading location yet")
             return
         }
 
-        storeBookmark(locator)
+        let theme = currentSettings?.theme ?? .cocoa
+        let alert = UIAlertController(
+            title: "Name Your Bookmark",
+            message: locator.title ?? "Current page",
+            preferredStyle: .alert
+        )
+        alert.view.tintColor = UIColor(red: 0.0118, green: 0.8588, blue: 0.9882, alpha: 1.0)
+        alert.addTextField { field in
+            field.placeholder = "Bookmark title (optional)"
+            field.autocapitalizationType = .sentences
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self] _ in
+            let customTitle = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = (customTitle?.isEmpty == false) ? customTitle! : (locator.title ?? "Bookmark")
+            self?.storeBookmarkWith(title: title, locator: locator)
+        })
+        present(alert, animated: true)
+    }
+
+    private func storeBookmarkWith(title: String, locator: Locator) {
+        guard let locatorJSON = try? locator.jsonString() else {
+            showToast("Could not save bookmark")
+            return
+        }
+
+        let progression = locator.locations.progression ?? 0
+
+        let bookmark = EPUBBookmark(
+            bookID: bookID,
+            title: title,
+            chapterTitle: locator.title ?? "",
+            locatorJSON: locatorJSON,
+            href: String(describing: locator.href),
+            progression: progression,
+            pageNumber: displayedPage,
+            totalPages: effectiveTotalPages
+        )
+
+        modelContext.insert(bookmark)
+
+        do {
+            try modelContext.save()
+            showToast("Bookmark saved")
+            updateBookmarkIndicator()
+        } catch {
+            showToast("Could not save bookmark")
+        }
+    }
+
+    func updateBookmarkIndicator() {
+        guard let locator = navigator.currentLocation else {
+            setBookmarkIndicatorVisible(false)
+            return
+        }
+
+        let currentHref = normalizedHref(locator.href)
+        let currentProgression = locator.locations.progression ?? 0
+        let currentPageNumber = displayedPage
+
+        let descriptor = FetchDescriptor<EPUBBookmark>(
+            predicate: #Predicate { bookmark in
+                bookmark.bookID == bookID && bookmark.deletedAt == nil
+            }
+        )
+
+        let bookmarks = (try? modelContext.fetch(descriptor)) ?? []
+
+        let hasBookmark = bookmarks.contains { bm in
+            let bookmarkHref = normalizedHref(bm.href)
+            guard bookmarkHref == currentHref else { return false }
+
+            if bm.pageNumber > 0 {
+                return bm.pageNumber == currentPageNumber
+            }
+
+            return abs(bm.progression - currentProgression) < 0.02
+        }
+
+        setBookmarkIndicatorVisible(hasBookmark)
+    }
+
+    private func setBookmarkIndicatorVisible(_ isVisible: Bool) {
+        if isVisible {
+            bookmarkIndicator.isHidden = false
+        }
+
+        UIView.animate(withDuration: 0.18) {
+            self.bookmarkIndicator.alpha = isVisible ? 1 : 0
+        } completion: { _ in
+            self.bookmarkIndicator.isHidden = !isVisible
+        }
+    }
+
+    private func normalizedHref(_ href: Any) -> String {
+        let value = String(describing: href)
+        return value.components(separatedBy: "#").first ?? value
+    }
+
+    private func showNotesAndQuotes() {
+        let descriptor = FetchDescriptor<EPUBHighlight>(
+            predicate: #Predicate { highlight in
+                highlight.bookID == bookID && highlight.deletedAt == nil
+            },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+
+        let highlights = (try? modelContext.fetch(descriptor)) ?? []
+
+        let sheet = EPUBNotesQuotesViewController(
+            highlights: highlights,
+            theme: currentSettings?.theme ?? .cocoa,
+            onSelect: { [weak self] highlight in
+                self?.dismiss(animated: true) {
+                    Task { @MainActor in
+                        guard let locator = try? Locator(jsonString: highlight.locatorJSON) else { return }
+                        try? await self?.navigator.go(to: locator)
+                    }
+                }
+            },
+            onDelete: { [weak self] highlight in
+                highlight.deletedAt = Date()
+                highlight.updatedAt = Date()
+                try? self?.modelContext.save()
+            }
+        )
+
+        let nav = UINavigationController(rootViewController: sheet)
+        configureAdaptivePresentation(for: nav, detents: [.medium(), .large()])
+        present(nav, animated: true)
     }
 
     @objc private func showSettings() {
@@ -709,8 +991,8 @@ final class ReadiumReaderChromeViewController: UIViewController {
         )
         
         let nav = UINavigationController(rootViewController: settingsVC)
-        configureAdaptivePresentation(for: nav, detents: [.medium()])
-        
+        configureAdaptivePresentation(for: nav, detents: [.medium(), .large()])
+
         present(nav, animated: true)
     }
 
@@ -750,7 +1032,7 @@ final class ReadiumReaderChromeViewController: UIViewController {
         currentSettings = settings
 
         DispatchQueue.main.async {
-            self.navigator.submitPreferences(settings.buildPreferences())
+            self.navigator.submitPreferences(settings.buildPreferences(isIPadLayout: self.usesIPadReaderLayout))
         }
 
         applyChromeTheme(settings.theme, animated: true)
@@ -760,73 +1042,39 @@ final class ReadiumReaderChromeViewController: UIViewController {
         guard let settings = currentSettings else { return }
 
         DispatchQueue.main.async {
-            self.navigator.submitPreferences(settings.buildPreferences())
+            self.navigator.submitPreferences(settings.buildPreferences(isIPadLayout: self.usesIPadReaderLayout))
         }
 
         applyChromeTheme(settings.theme, animated: false)
     }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            guard let self, let settings = self.currentSettings else { return }
+            self.navigator.submitPreferences(settings.buildPreferences(isIPadLayout: self.usesIPadReaderLayout(for: size)))
+        }
+    }
+
+    private var usesIPadReaderLayout: Bool {
+        usesIPadReaderLayout(for: view.bounds.size)
+    }
+
+    private func usesIPadReaderLayout(for size: CGSize) -> Bool {
+        traitCollection.userInterfaceIdiom == .pad || max(size.width, size.height) >= 900
+    }
     
     private func chromeBackgroundHex(for theme: ReaderTheme) -> UIColor {
-        switch theme {
-        case .white:
-            return UIColor(lumeyHex: "#FFFFFF")
-        case .sepia:
-            return UIColor(lumeyHex: "#EDDBCB")
-        case .gray:
-            return UIColor(lumeyHex: "#303136")
-        case .dark:
-            return UIColor(lumeyHex: "#020304")
-        case .obsidian:
-            return UIColor(lumeyHex: "#020304")
-        case .ember:
-            return UIColor(lumeyHex: "#322407")
-        case .violet:
-            return UIColor(lumeyHex: "#440D5F")
-        case .rose:
-            return UIColor(lumeyHex: "#75105C")
-        }
+        theme.chromeBackgroundColor
     }
 
     private func chromeTextHex(for theme: ReaderTheme) -> UIColor {
-        switch theme {
-        case .white:
-            return UIColor(lumeyHex: "#111111")
-        case .sepia:
-            return UIColor(lumeyHex: "#3B2F22")
-        case .gray:
-            return UIColor(lumeyHex: "#D9D9DB")
-        case .dark:
-            return UIColor(lumeyHex: "#FFFFFF")
-        case .obsidian:
-            return UIColor(lumeyHex: "#F7F7FA")
-        case .ember:
-            return UIColor(lumeyHex: "#F6E7C6")
-        case .violet:
-            return UIColor(lumeyHex: "#F2D9FF")
-        case .rose:
-            return UIColor(lumeyHex: "#FFE0F4")
-        }
+        theme.chromeTextColor
     }
 
     private func chromeBorderHex(for theme: ReaderTheme) -> UIColor {
-        switch theme {
-        case .white:
-            return UIColor(lumeyHex: "#111111").withAlphaComponent(0.08)
-        case .sepia:
-            return UIColor(lumeyHex: "#EDDBCB").withAlphaComponent(0.12)
-        case .gray:
-            return UIColor(lumeyHex: "#D9D9DB").withAlphaComponent(0.08)
-        case .dark:
-            return UIColor(lumeyHex: "#FFFFFF").withAlphaComponent(0.05)
-        case .obsidian:
-            return UIColor(lumeyHex: "#FFFFFF").withAlphaComponent(0.08)
-        case .ember:
-            return UIColor(lumeyHex: "#F6E7C6").withAlphaComponent(0.14)
-        case .violet:
-            return UIColor(lumeyHex: "#F2D9FF").withAlphaComponent(0.14)
-        case .rose:
-            return UIColor(lumeyHex: "#FFE0F4").withAlphaComponent(0.14)
-        }
+        theme.chromeBorderColor
     }
     
     private func applyChromeTheme(_ theme: ReaderTheme, animated: Bool) {
@@ -853,6 +1101,10 @@ final class ReadiumReaderChromeViewController: UIViewController {
             if let headerStack = self.topBar.subviews.compactMap({ $0 as? UIStackView }).first,
                let titleLabel = headerStack.arrangedSubviews.compactMap({ $0 as? UILabel }).first {
                 titleLabel.textColor = textColor
+                headerStack.arrangedSubviews.compactMap { $0 as? UIButton }.forEach { button in
+                    button.tintColor = textColor
+                    (button as? LumeyGradientIconButton)?.setIconColor(textColor)
+                }
             }
         }
 
@@ -870,6 +1122,177 @@ final class ReadiumReaderChromeViewController: UIViewController {
             self.topBar.alpha = self.barsAreHidden ? 0 : 1
             self.bottomBar.alpha = self.barsAreHidden ? 0 : 1
         }
+    }
+
+    // MARK: - Text Selection Menu Actions (Readium EditingAction selectors)
+
+    @objc func highlightSelection(_ sender: Any?) {
+        openAnnotationSheet(mode: .highlight)
+    }
+
+    @objc func quoteSelection(_ sender: Any?) {
+        openAnnotationSheet(mode: .quote)
+    }
+
+    @objc func addNoteToSelection(_ sender: Any?) {
+        openAnnotationSheet(mode: .note)
+    }
+
+    private enum AnnotationMode { case highlight, quote, note }
+
+    private func openAnnotationSheet(mode: AnnotationMode) {
+        print("[Reader] openAnnotationSheet called, mode: \(mode)")
+        getSelectedTextAndLocator { [weak self] text, locator in
+            print("[Reader] getSelectedTextAndLocator returned — text: '\(text.prefix(30))', locator: \(locator != nil)")
+            guard let self else {
+                print("[Reader] self is nil, aborting")
+                return
+            }
+            let theme = self.currentSettings?.theme ?? .cocoa
+
+            let sheet = EPUBHighlightMenuViewController(
+                selectedText: text,
+                theme: theme,
+                initialMode: mode == .note ? .note : (mode == .quote ? .quote : .highlight),
+                onHighlight: { [weak self] color in
+                    print("[Reader] onHighlight callback fired — color: \(color)")
+                    self?.dismiss(animated: true) {
+                        print("[Reader] onHighlight dismiss completed, saving...")
+                        self?.saveHighlightDirect(text: text, locator: locator, color: color, isQuote: false, note: "")
+                    }
+                },
+                onQuote: { [weak self] color in
+                    print("[Reader] onQuote callback fired — color: \(color)")
+                    self?.dismiss(animated: true) {
+                        print("[Reader] onQuote dismiss completed, saving...")
+                        self?.saveHighlightDirect(text: text, locator: locator, color: color, isQuote: true, note: "")
+                    }
+                },
+                onNote: { [weak self] color, noteText in
+                    print("[Reader] onNote callback fired — color: \(color), note: '\(noteText.prefix(30))'")
+                    self?.dismiss(animated: true) {
+                        print("[Reader] onNote dismiss completed, saving...")
+                        self?.saveHighlightDirect(text: text, locator: locator, color: color, isQuote: false, note: noteText)
+                    }
+                }
+            )
+
+            let nav = UINavigationController(rootViewController: sheet)
+            self.configureAdaptivePresentation(for: nav, detents: [.medium()])
+            print("[Reader] Presenting annotation sheet now")
+            self.present(nav, animated: true)
+        }
+    }
+
+    private func getSelectedTextAndLocator(completion: @escaping (String, Locator?) -> Void) {
+        // Use Readium's selection API for a proper text-range locator
+        if let selection = navigator.currentSelection {
+            let text = selection.locator.text.highlight ?? ""
+            print("[Reader] Got selection from navigator.currentSelection — text: '\(text.prefix(50))'")
+            completion(text, selection.locator)
+            return
+        }
+
+        print("[Reader] navigator.currentSelection is nil, falling back to JS")
+
+        func findWebView(in view: UIView) -> WKWebView? {
+            if let webView = view as? WKWebView { return webView }
+            for subview in view.subviews {
+                if let found = findWebView(in: subview) { return found }
+            }
+            return nil
+        }
+
+        guard let webView = findWebView(in: navigator.view) else {
+            print("[Reader] WKWebView NOT found in navigator view hierarchy")
+            completion("", navigator.currentLocation)
+            return
+        }
+
+        print("[Reader] WKWebView found, evaluating JS")
+
+        webView.evaluateJavaScript("window.getSelection().toString()") { [weak self] result, error in
+            if let error {
+                print("[Reader] JS error: \(error)")
+            }
+            let text = (result as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            print("[Reader] JS returned text: '\(text.prefix(50))'")
+            completion(text, self?.navigator.currentLocation)
+        }
+    }
+
+    private func saveHighlightDirect(text: String, locator: Locator?, color: HighlightColor, isQuote: Bool, note: String) {
+        print("[Reader] saveHighlightDirect — text: '\(text.prefix(30))', color: \(color), isQuote: \(isQuote), note: '\(note.prefix(20))'")
+        guard let locator, let locatorJSON = try? locator.jsonString() else {
+            print("[Reader] saveHighlightDirect FAILED — locator nil or JSON failed")
+            showToast("Could not save")
+            return
+        }
+
+        let progression = locator.locations.progression ?? 0
+
+        let highlight = EPUBHighlight(
+            bookID: bookID,
+            highlightedText: text,
+            note: note,
+            chapterTitle: locator.title ?? "",
+            pageNumber: displayedPage,
+            totalPages: effectiveTotalPages,
+            locatorJSON: locatorJSON,
+            href: String(describing: locator.href),
+            progression: progression,
+            highlightColor: color,
+            isQuote: isQuote
+        )
+
+        modelContext.insert(highlight)
+
+        do {
+            try modelContext.save()
+            print("[Reader] Highlight saved successfully — id: \(highlight.id)")
+
+            applyAllHighlightDecorations()
+
+            let label = isQuote ? "Quote saved" : (note.isEmpty ? "Highlighted" : "Note saved")
+            showToast(label)
+        } catch {
+            print("[Reader] Highlight save failed:", error)
+            showToast("Could not save")
+        }
+    }
+
+    // MARK: - Readium Decorations
+
+    func applyAllHighlightDecorations() {
+        let descriptor = FetchDescriptor<EPUBHighlight>(
+            predicate: #Predicate { highlight in
+                highlight.bookID == bookID && highlight.deletedAt == nil
+            }
+        )
+
+        let highlights = (try? modelContext.fetch(descriptor)) ?? []
+        print("[Reader] Applying \(highlights.count) highlight decorations")
+
+        var decorations: [Decoration] = []
+
+        for highlight in highlights {
+            guard let locator = try? Locator(jsonString: highlight.locatorJSON) else {
+                print("[Reader] Skipping highlight \(highlight.id) — bad locator JSON")
+                continue
+            }
+
+            let tintColor = UIColor(lumeyHex: highlight.highlightColor.hex)
+
+            let decoration = Decoration(
+                id: highlight.id.uuidString,
+                locator: locator,
+                style: .highlight(tint: tintColor, isActive: false)
+            )
+            decorations.append(decoration)
+        }
+
+        print("[Reader] Built \(decorations.count) decorations, applying to navigator")
+        navigator.apply(decorations: decorations, in: "highlights")
     }
 
     private func showToast(_ text: String) {
@@ -1003,15 +1426,15 @@ final class ReadiumTableOfContentsViewController: UIViewController, UITableViewD
     private let links: [ReadiumLink]
     private let flattenedLinks: [(link: ReadiumLink, level: Int)]
     private let publication: Publication
+    private let theme: ReaderTheme
     private let onSelect: (ReadiumLink) -> Void
-    private var pageMap: [String: Int] = [:]
-    private var totalPages: Int = 0
 
     private let tableView = UITableView(frame: .zero, style: .plain)
 
-    init(links: [ReadiumLink], publication: Publication, onSelect: @escaping (ReadiumLink) -> Void) {
+    init(links: [ReadiumLink], publication: Publication, theme: ReaderTheme, onSelect: @escaping (ReadiumLink) -> Void) {
         self.links = links
         self.publication = publication
+        self.theme = theme
         self.flattenedLinks = Self.flatten(links: links)
         self.onSelect = onSelect
         super.init(nibName: nil, bundle: nil)
@@ -1023,21 +1446,15 @@ final class ReadiumTableOfContentsViewController: UIViewController, UITableViewD
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor.black
+        view.backgroundColor = theme.chromeBackgroundColor
         title = nil
         navigationController?.setNavigationBarHidden(true, animated: false)
 
         let titleLabel = UILabel()
         titleLabel.text = "Contents"
-        titleLabel.textColor = .white
-        titleLabel.font = UIFont.rounded(size: 32, weight: .black)
+        titleLabel.textColor = theme.chromeTextColor
+        titleLabel.font = UIFont.rounded(size: 24, weight: .black)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        let pageCountLabel = UILabel()
-        pageCountLabel.textColor = UIColor.white.withAlphaComponent(0.5)
-        pageCountLabel.font = UIFont.rounded(size: 13, weight: .bold)
-        pageCountLabel.translatesAutoresizingMaskIntoConstraints = false
-        pageCountLabel.tag = 888
 
         let closeButton = navIconButton(
             assetName: "xmarkwavy",
@@ -1045,16 +1462,12 @@ final class ReadiumTableOfContentsViewController: UIViewController, UITableViewD
         )
 
         view.addSubview(titleLabel)
-        view.addSubview(pageCountLabel)
         view.addSubview(closeButton)
 
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 22),
             titleLabel.heightAnchor.constraint(equalToConstant: 44),
-            
-            pageCountLabel.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
-            pageCountLabel.leadingAnchor.constraint(equalTo: titleLabel.trailingAnchor, constant: 10),
 
             closeButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28)
@@ -1077,38 +1490,6 @@ final class ReadiumTableOfContentsViewController: UIViewController, UITableViewD
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 76),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-        
-        Task { @MainActor in
-            await loadPositions()
-        }
-    }
-    
-    private func loadPositions() async {
-        let positionsResult = await publication.positions()
-
-        switch positionsResult {
-        case .success(let positions):
-            totalPages = positions.count
-
-            for position in positions {
-                let href = String(describing: position.href)
-                let hrefBase = href.components(separatedBy: "#").first ?? href
-
-                if pageMap[hrefBase] == nil {
-                    pageMap[hrefBase] = position.locations.position ?? 0
-                }
-            }
-
-        case .failure:
-            totalPages = 0
-            pageMap = [:]
-        }
-        
-        if let label = view.viewWithTag(888) as? UILabel {
-            label.text = "\(totalPages) pages"
-        }
-        
-        tableView.reloadData()
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -1118,12 +1499,7 @@ final class ReadiumTableOfContentsViewController: UIViewController, UITableViewD
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: ReadiumTOCCell.reuseID, for: indexPath) as! ReadiumTOCCell
         let item = flattenedLinks[indexPath.row]
-        
-        let href = String(describing: item.link.href)
-        let hrefBase = href.components(separatedBy: "#").first ?? href
-        let pageNumber = pageMap[hrefBase]
-        
-        cell.configure(title: item.link.title ?? "Untitled Section", level: item.level, pageNumber: pageNumber)
+        cell.configure(title: item.link.title ?? "Untitled Section", level: item.level)
         return cell
     }
 
@@ -1157,6 +1533,7 @@ final class ReadiumTableOfContentsViewController: UIViewController, UITableViewD
 
 final class ReadiumBookmarksViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
     private var bookmarks: [EPUBBookmark]
+    private let theme: ReaderTheme
     private let onSelect: (EPUBBookmark) -> Void
     private let onDelete: (EPUBBookmark) -> Void
 
@@ -1164,10 +1541,12 @@ final class ReadiumBookmarksViewController: UIViewController, UITableViewDataSou
 
     init(
         bookmarks: [EPUBBookmark],
+        theme: ReaderTheme,
         onSelect: @escaping (EPUBBookmark) -> Void,
         onDelete: @escaping (EPUBBookmark) -> Void
     ) {
         self.bookmarks = bookmarks
+        self.theme = theme
         self.onSelect = onSelect
         self.onDelete = onDelete
         super.init(nibName: nil, bundle: nil)
@@ -1180,15 +1559,14 @@ final class ReadiumBookmarksViewController: UIViewController, UITableViewDataSou
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        view.backgroundColor = UIColor.black
+        view.backgroundColor = theme.chromeBackgroundColor
         title = nil
         navigationController?.setNavigationBarHidden(true, animated: false)
 
         let titleLabel = UILabel()
         titleLabel.text = "Bookmarks"
-        titleLabel.textColor = .white
-        titleLabel.font = UIFont.rounded(size: 32, weight: .black)
-        titleLabel.textAlignment = .center
+        titleLabel.textColor = theme.chromeTextColor
+        titleLabel.font = UIFont.rounded(size: 24, weight: .black)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let closeButton = navIconButton(
@@ -1201,11 +1579,11 @@ final class ReadiumBookmarksViewController: UIViewController, UITableViewDataSou
 
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            titleLabel.heightAnchor.constraint(equalToConstant: 44),
+            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 22),
+            titleLabel.heightAnchor.constraint(equalToConstant: 36),
 
             closeButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
-            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28)
+            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -22)
         ])
 
         tableView.translatesAutoresizingMaskIntoConstraints = false
@@ -1222,7 +1600,7 @@ final class ReadiumBookmarksViewController: UIViewController, UITableViewDataSou
         NSLayoutConstraint.activate([
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 76),
+            tableView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 16),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
@@ -1364,7 +1742,6 @@ final class ReadiumTOCCell: UITableViewCell {
 
     private let cardView = UIView()
     private let titleLabel = UILabel()
-    private let pageLabel = UILabel()
     private let chevronImageView = LumeyGradientIconImageView(assetName: "chevright")
     private var leadingConstraint: NSLayoutConstraint?
 
@@ -1386,20 +1763,12 @@ final class ReadiumTOCCell: UITableViewCell {
         titleLabel.font = UIFont.rounded(size: 16, weight: .black)
         titleLabel.numberOfLines = 0
         titleLabel.lineBreakMode = .byWordWrapping
-        
-        pageLabel.translatesAutoresizingMaskIntoConstraints = false
-        pageLabel.textColor = UIColor.white.withAlphaComponent(0.4)
-        pageLabel.font = UIFont.rounded(size: 12, weight: .bold)
-        pageLabel.textAlignment = .right
-        pageLabel.setContentHuggingPriority(.required, for: .horizontal)
-        pageLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         chevronImageView.translatesAutoresizingMaskIntoConstraints = false
         chevronImageView.contentMode = .scaleAspectFit
 
         contentView.addSubview(cardView)
         cardView.addSubview(titleLabel)
-        cardView.addSubview(pageLabel)
         cardView.addSubview(chevronImageView)
 
         leadingConstraint = titleLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 16)
@@ -1412,11 +1781,8 @@ final class ReadiumTOCCell: UITableViewCell {
 
             titleLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 18),
             titleLabel.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -18),
-            titleLabel.trailingAnchor.constraint(equalTo: pageLabel.leadingAnchor, constant: -10),
+            titleLabel.trailingAnchor.constraint(equalTo: chevronImageView.leadingAnchor, constant: -10),
             leadingConstraint!,
-            
-            pageLabel.centerYAnchor.constraint(equalTo: cardView.centerYAnchor),
-            pageLabel.trailingAnchor.constraint(equalTo: chevronImageView.leadingAnchor, constant: -10),
 
             chevronImageView.centerYAnchor.constraint(equalTo: cardView.centerYAnchor),
             chevronImageView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -16),
@@ -1429,17 +1795,9 @@ final class ReadiumTOCCell: UITableViewCell {
         nil
     }
 
-    func configure(title: String, level: Int, pageNumber: Int? = nil) {
+    func configure(title: String, level: Int) {
         titleLabel.text = title
         leadingConstraint?.constant = CGFloat(16 + (level * 18))
-        
-        if let page = pageNumber, page > 0 {
-            pageLabel.text = "\(page)"
-            pageLabel.isHidden = false
-        } else {
-            pageLabel.text = nil
-            pageLabel.isHidden = true
-        }
     }
 }
 
@@ -1496,6 +1854,10 @@ final class LumeyGradientIconButton: UIButton {
 
     required init?(coder: NSCoder) {
         nil
+    }
+
+    func setIconColor(_ color: UIColor) {
+        gradientLayer.colors = [color.cgColor, color.cgColor]
     }
 
     override func layoutSubviews() {

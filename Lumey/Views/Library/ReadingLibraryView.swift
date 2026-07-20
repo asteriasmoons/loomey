@@ -22,13 +22,20 @@ struct ReadingLibraryView: View {
     @Query
     private var librarySettings: [ReadingLibrarySettings]
 
+    @Query(sort: \ReadingLibraryCustomFilter.sortIndex)
+    private var customFilters: [ReadingLibraryCustomFilter]
+
     @State private var searchText = ""
     @State private var selectedStatus: BookStatus? = nil
     @State private var selectedSeries: String? = nil
+    @State private var selectedCustomFilterID: UUID? = nil
+    @State private var isCustomFilterExpanded = false
     @State private var isSeriesFilterExpanded = false
     @State private var activeBookSheet: BookSheetMode? = nil
     @State private var showRecommendationsSheet = false
     @State private var showBookSearchSheet = false
+    @State private var showAddCustomFilterDialog = false
+    @State private var customFilterName = ""
     @State private var hasAppeared = false
 
     private var visibleBooks: [Book] {
@@ -41,6 +48,10 @@ struct ReadingLibraryView: View {
             .filter { book in
                 guard let selectedSeries else { return true }
                 return book.seriesName == selectedSeries
+            }
+            .filter { book in
+                guard let selectedCustomFilterID else { return true }
+                return book.customFilterIDs.contains(selectedCustomFilterID)
             }
             .filter { book in
                 let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -88,6 +99,10 @@ struct ReadingLibraryView: View {
         .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
+    private var shouldShowCustomFilterCollapseControl: Bool {
+        customFilters.count > 6
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -99,6 +114,7 @@ struct ReadingLibraryView: View {
                         searchBar
                         recommendationButtonSection
                         statusFilter
+                        customFilterSection
                         readingListsButton
                         seriesFilter
                         libraryOverview
@@ -124,6 +140,20 @@ struct ReadingLibraryView: View {
             }
             .adaptivePresentation(isPresented: $showBookSearchSheet, useFullScreenCover: horizontalSizeClass == .regular) {
                 BookSearchSheet()
+            }
+            .alert("New Filter", isPresented: $showAddCustomFilterDialog) {
+                TextField("Two words max", text: $customFilterName)
+
+                Button("Cancel", role: .cancel) {
+                    customFilterName = ""
+                }
+
+                Button("Create") {
+                    createCustomFilter()
+                }
+                .disabled(sanitizedCustomFilterTitle(customFilterName).isEmpty)
+            } message: {
+                Text("Use up to two words or 22 characters.")
             }
             .onAppear {
                 guard !hasAppeared else { return }
@@ -356,6 +386,12 @@ private extension ReadingLibraryView {
     var statusFilter: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
+                customFilterAddButton
+
+                if shouldShowCustomFilterCollapseControl {
+                    customFilterCollapseButton
+                }
+
                 statusFilterChip(title: "All", status: nil)
 
                 ForEach(BookStatus.allCases) { status in
@@ -364,6 +400,73 @@ private extension ReadingLibraryView {
             }
             .padding(.vertical, 2)
         }
+    }
+
+    var customFilterSection: some View {
+        Group {
+            if !customFilters.isEmpty {
+                FlowLayout(spacing: 8) {
+                    ForEach(customFilters) { filter in
+                        customFilterChip(filter)
+                    }
+                }
+                .frame(maxHeight: shouldShowCustomFilterCollapseControl && !isCustomFilterExpanded ? 39 : nil, alignment: .top)
+                .clipped()
+                .animation(.spring(response: 0.28, dampingFraction: 0.82), value: isCustomFilterExpanded)
+            }
+        }
+    }
+
+    var customFilterAddButton: some View {
+        Button {
+            customFilterName = ""
+            showAddCustomFilterDialog = true
+        } label: {
+            Image("addwavy")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 14, height: 14)
+                .foregroundStyle(LColors.gradientPurple)
+                .frame(width: 34, height: 34)
+                .background(
+                    Circle()
+                        .fill(LColors.bg)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(LColors.gradientPurple, lineWidth: 1.35)
+                        )
+                        .shadow(color: LColors.gradientPurple.opacity(0.24), radius: 10, y: 5)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Create custom library filter")
+    }
+
+    var customFilterCollapseButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                isCustomFilterExpanded.toggle()
+            }
+        } label: {
+            Image(isCustomFilterExpanded ? "chevup" : "chevdown")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 12, height: 12)
+                .foregroundStyle(LColors.gradientPurple)
+                .frame(width: 34, height: 34)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.06))
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(LColors.gradientPurple.opacity(0.7), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isCustomFilterExpanded ? "Collapse custom filters" : "Expand custom filters")
     }
 
     var seriesFilter: some View {
@@ -411,6 +514,7 @@ private extension ReadingLibraryView {
         return Button {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
                 selectedStatus = status
+                selectedCustomFilterID = nil
             }
         } label: {
             HStack(spacing: 6) {
@@ -478,6 +582,94 @@ private extension ReadingLibraryView {
         }
     }
 
+    func customFilterChip(_ filter: ReadingLibraryCustomFilter) -> some View {
+        let isSelected = selectedCustomFilterID == filter.id
+
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                selectedCustomFilterID = isSelected ? nil : filter.id
+                if !isSelected {
+                    selectedStatus = nil
+                }
+            }
+        } label: {
+            Text(filter.title)
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .foregroundStyle(isSelected ? .white : LColors.textSecondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isSelected ? LColors.gradientPurple : Color.white.opacity(0.055))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(
+                            isSelected ? LColors.gradientPurple : Color.white.opacity(0.12),
+                            lineWidth: 1
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) {
+                deleteCustomFilter(filter)
+            } label: {
+                Label {
+                    Text("Delete Filter")
+                } icon: {
+                    Image("trash")
+                }
+            }
+        }
+    }
+
+    func sanitizedCustomFilterTitle(_ title: String) -> String {
+        let words = title
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .prefix(2)
+            .map(String.init)
+
+        let twoWordTitle = words.joined(separator: " ")
+        return String(twoWordTitle.prefix(22))
+    }
+
+    func createCustomFilter() {
+        let title = sanitizedCustomFilterTitle(customFilterName)
+        guard !title.isEmpty else { return }
+
+        let isDuplicate = customFilters.contains {
+            $0.title.localizedCaseInsensitiveCompare(title) == .orderedSame
+        }
+        guard !isDuplicate else {
+            customFilterName = ""
+            return
+        }
+
+        let nextIndex = (customFilters.map(\.sortIndex).max() ?? -1) + 1
+        let filter = ReadingLibraryCustomFilter(title: title, sortIndex: nextIndex)
+        modelContext.insert(filter)
+        try? modelContext.save()
+
+        customFilterName = ""
+    }
+
+    func deleteCustomFilter(_ filter: ReadingLibraryCustomFilter) {
+        let filterID = filter.id
+
+        for book in books where book.customFilterIDs.contains(filterID) {
+            book.customFilterIDs = book.customFilterIDs.filter { $0 != filterID }
+        }
+
+        if selectedCustomFilterID == filterID {
+            selectedCustomFilterID = nil
+        }
+
+        modelContext.delete(filter)
+        try? modelContext.save()
+    }
+
 
 }
 
@@ -526,6 +718,25 @@ private extension ReadingLibraryView {
                             activeBookSheet = BookSheetMode(book: book)
                         }
                         .contextMenu {
+                            if !customFilters.isEmpty {
+                                ForEach(customFilters) { filter in
+                                    let isAssigned = book.customFilterIDs.contains(filter.id)
+
+                                    Button {
+                                        toggleCustomFilter(filter, for: book)
+                                    } label: {
+                                        Label {
+                                            Text(isAssigned ? "Remove \(filter.title)" : "Add \(filter.title)")
+                                        } icon: {
+                                            Image(isAssigned ? "checkwavy" : "addwavy")
+                                                .renderingMode(.template)
+                                        }
+                                    }
+                                }
+
+                                Divider()
+                            }
+
                             Button(role: .destructive) {
                                 deleteBook(book)
                             } label: {
@@ -540,6 +751,63 @@ private extension ReadingLibraryView {
                 }
             }
         }
+    }
+
+    var readingChallengesCard: some View {
+        NavigationLink {
+            ChallengesView()
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    LColors.gradientPurple.opacity(0.9),
+                                    LColors.gradientCyan.opacity(0.7)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 56, height: 56)
+
+                    Image("readinggoals")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 28, height: 28)
+                        .foregroundStyle(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Reading Challenges")
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+
+                    Text("Build quests for your TBR, series, authors, and formats.")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(LColors.textSecondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(LColors.textSecondary)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(LColors.glassSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .strokeBorder(LColors.gradientPurple.opacity(0.32), lineWidth: 1)
+                    )
+                    .shadow(color: LColors.gradientPurple.opacity(0.16), radius: 18, y: 10)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     var emptyLibraryCard: some View {
@@ -559,6 +827,16 @@ private extension ReadingLibraryView {
 
     func deleteBook(_ book: Book) {
         modelContext.delete(book)
+        try? modelContext.save()
+    }
+
+    func toggleCustomFilter(_ filter: ReadingLibraryCustomFilter, for book: Book) {
+        if book.customFilterIDs.contains(filter.id) {
+            book.customFilterIDs = book.customFilterIDs.filter { $0 != filter.id }
+        } else {
+            book.customFilterIDs.append(filter.id)
+        }
+
         try? modelContext.save()
     }
 }

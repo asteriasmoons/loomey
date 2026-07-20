@@ -127,7 +127,7 @@ struct ProfileView: View {
     }
     
     private var stats: ReadingStats? {
-        statsRecords.first
+        ReadingStats.preferredRecord(from: statsRecords)
     }
 
     private var currentYear: Int {

@@ -55,7 +55,7 @@ struct ReadingGoalsView: View {
     }
 
     private var readingStats: ReadingStats? {
-        stats.first
+        ReadingStats.preferredRecord(from: stats)
     }
     
     var body: some View {
@@ -1949,6 +1949,8 @@ struct LogSessionSheet: View {
         modelContext.insert(session)
         updateSelectedBookProgress(to: enteredEndPage, ebookPage: isEbookMode && bookCanConvert ? enteredEbookEndPage : nil)
 
+        let stats = ReadingStats.fetchOrCreate(in: modelContext)
+
         if let goal = selectedGoal {
             let previousValue = goal.currentValue
             let previousStreak = goal.currentStreak
@@ -1991,7 +1993,11 @@ struct LogSessionSheet: View {
             }
 
             if goal.type == .streak {
-                goal.updateStreak(completedOn: sessionDate)
+                let shouldBridge: Bool = {
+                    guard let last = goal.lastCompletedDate else { return false }
+                    return stats.shouldBridgeStreakGap(from: last, to: sessionDate)
+                }()
+                goal.updateStreak(completedOn: sessionDate, bridgeBreakGap: shouldBridge)
 
                 if previousStreak != goal.currentStreak || previousBestStreak != goal.bestStreak {
                     insertGoalHistory(
@@ -2023,14 +2029,6 @@ struct LogSessionSheet: View {
             }
         }
 
-        let stats: ReadingStats
-        if let existing = try? modelContext.fetch(FetchDescriptor<ReadingStats>()).first {
-            stats = existing
-        } else {
-            stats = ReadingStats()
-            modelContext.insert(stats)
-        }
-
         stats.totalMinutesRead += mins
         stats.totalPagesRead += pages
         stats.totalReadingSessions += 1
@@ -2043,6 +2041,10 @@ struct LogSessionSheet: View {
         let cal = Calendar.current
         if let last = stats.lastReadingDate, cal.isDateInYesterday(last) || cal.isDateInToday(last) {
             if !cal.isDateInToday(last) { stats.currentReadingStreak += 1 }
+        } else if let last = stats.lastReadingDate,
+                  stats.readingBreakStreakValue > 0,
+                  stats.shouldBridgeStreakGap(from: last, to: sessionDate) {
+            stats.currentReadingStreak = stats.readingBreakStreakValue + 1
         } else {
             stats.currentReadingStreak = 1
         }
@@ -2413,9 +2415,16 @@ struct GoalCheckInSheet: View {
             goal.resetProgressIfNeededForCurrentPeriod()
         }
 
+        // Fetch stats early for break-bridge logic
+        let stats = ReadingStats.fetchOrCreate(in: modelContext)
+
         // Use the model's built-in methods
         if goal.type == .streak {
-            goal.updateStreak(completedOn: eventDate)
+            let shouldBridge: Bool = {
+                guard let last = goal.lastCompletedDate else { return false }
+                return stats.shouldBridgeStreakGap(from: last, to: eventDate)
+            }()
+            goal.updateStreak(completedOn: eventDate, bridgeBreakGap: shouldBridge)
         } else {
             goal.updateProgress(to: newValue)
         }
@@ -2483,14 +2492,6 @@ struct GoalCheckInSheet: View {
             modelContext.insert(checkInSession)
         }
 
-        let stats: ReadingStats
-        if let existing = try? modelContext.fetch(FetchDescriptor<ReadingStats>()).first {
-            stats = existing
-        } else {
-            stats = ReadingStats()
-            modelContext.insert(stats)
-        }
-
         if minutes > 0 || pages > 0 || goal.type == .streak {
             stats.totalMinutesRead += minutes
             stats.totalPagesRead += pages
@@ -2514,6 +2515,10 @@ struct GoalCheckInSheet: View {
                 if !calendar.isDateInToday(last) {
                     stats.currentReadingStreak += 1
                 }
+            } else if let last = stats.lastReadingDate,
+                      stats.readingBreakStreakValue > 0,
+                      stats.shouldBridgeStreakGap(from: last, to: eventDate) {
+                stats.currentReadingStreak = stats.readingBreakStreakValue + 1
             } else {
                 stats.currentReadingStreak = 1
             }

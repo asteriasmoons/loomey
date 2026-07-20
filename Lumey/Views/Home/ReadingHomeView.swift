@@ -38,7 +38,7 @@ struct ReadingHomeView: View {
     private var allReviews: [BookReview]
 
     private var readingStats: ReadingStats? {
-        stats.first
+        ReadingStats.preferredRecord(from: stats)
     }
 
     private var savedAuthUser: AuthUser? {
@@ -62,39 +62,53 @@ struct ReadingHomeView: View {
     }
 
     private var currentStreak: Int {
-        let calendar = Calendar.current
-        let readingDays = Set(
-            sessions.map {
-                calendar.startOfDay(for: $0.date)
-            }
-        )
+        if let s = readingStats, s.isOnReadingBreak {
+            if s.currentBreakDays > ReadingStats.maxBreakDays { return 0 }
+            return s.readingBreakStreakValue
+        }
 
+        let calendar = Calendar.current
+        let readingDays = Set(sessions.map { calendar.startOfDay(for: $0.date) })
         guard !readingDays.isEmpty else { return 0 }
 
         let today = calendar.startOfDay(for: Date())
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        let allBreakPeriods = readingStats?.breakPeriods ?? []
 
-        let anchorDay: Date
+        var anchorDay: Date?
+        var checkDay = today
+        var graceDaysUsed = 0
 
-        if readingDays.contains(today) {
-            anchorDay = today
-        } else if readingDays.contains(yesterday) {
-            anchorDay = yesterday
-        } else {
-            return 0
-        }
-
-        var streak = 0
-        var day = anchorDay
-
-        while readingDays.contains(day) {
-            streak += 1
-
-            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: day) else {
+        while graceDaysUsed <= 1 {
+            if readingDays.contains(checkDay) {
+                anchorDay = checkDay
                 break
             }
+            if ReadingStats.isDateInBreakPeriod(checkDay, periods: allBreakPeriods) {
+                guard let prev = calendar.date(byAdding: .day, value: -1, to: checkDay) else { break }
+                checkDay = prev
+                continue
+            }
+            graceDaysUsed += 1
+            guard let prev = calendar.date(byAdding: .day, value: -1, to: checkDay) else { break }
+            checkDay = prev
+        }
 
-            day = previousDay
+        guard let anchor = anchorDay else { return 0 }
+
+        var streak = 0
+        var day = anchor
+
+        for _ in 0..<3650 {
+            if readingDays.contains(day) {
+                streak += 1
+                guard let prev = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+                day = prev
+            } else if ReadingStats.isDateInBreakPeriod(day, periods: allBreakPeriods) {
+                guard let prev = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+                day = prev
+            } else {
+                break
+            }
         }
 
         return streak
@@ -102,33 +116,37 @@ struct ReadingHomeView: View {
 
     private var bestStreak: Int {
         let calendar = Calendar.current
-        let sortedDays = Array(
-            Set(
-                sessions.map {
-                    calendar.startOfDay(for: $0.date)
-                }
-            )
-        )
-        .sorted()
-
+        let sortedDays = Array(Set(sessions.map { calendar.startOfDay(for: $0.date) })).sorted()
         guard !sortedDays.isEmpty else { return 0 }
 
+        let allBreakPeriods = readingStats?.breakPeriods ?? []
         var best = 1
         var current = 1
 
         for index in 1..<sortedDays.count {
             let previous = sortedDays[index - 1]
             let currentDay = sortedDays[index]
+            let dayAfterPrevious = calendar.date(byAdding: .day, value: 1, to: previous) ?? previous
 
-            if calendar.isDate(
-                currentDay,
-                inSameDayAs: calendar.date(byAdding: .day, value: 1, to: previous) ?? previous
-            ) {
+            if calendar.isDate(currentDay, inSameDayAs: dayAfterPrevious) {
                 current += 1
-                best = max(best, current)
             } else {
-                current = 1
+                var gapDay = dayAfterPrevious
+                var gapBridged = true
+                while gapDay < currentDay {
+                    if !ReadingStats.isDateInBreakPeriod(gapDay, periods: allBreakPeriods) {
+                        gapBridged = false
+                        break
+                    }
+                    guard let next = calendar.date(byAdding: .day, value: 1, to: gapDay) else {
+                        gapBridged = false
+                        break
+                    }
+                    gapDay = next
+                }
+                current = gapBridged ? current + 1 : 1
             }
+            best = max(best, current)
         }
 
         return best

@@ -12,79 +12,59 @@ import ReadiumNavigator
 // MARK: - Reader Theme
 
 enum ReaderTheme: String, Codable, CaseIterable, Identifiable {
-    case white = "White"
-    case sepia = "Sepia"
-    case gray = "Gray"
-    case dark = "Dark"
-    case obsidian = "Obsidian"
-    case ember = "Ember"
-    case violet = "Violet"
-    case rose = "Rose"
+    case berry = "Berry"
+    case slate = "Slate"
+    case cocoa = "Dark"
+    case plum = "Plum"
+    case teal = "Teal"
+    case aqua = "Aqua"
+    case taupe = "Taupe"
+    case lilac = "Lilac"
+    case blush = "Blush"
+    case paper = "Paper"
     
     var id: String { rawValue }
     
     var backgroundColor: UIColor {
         switch self {
-        case .white: return .white
-        case .sepia: return UIColor(red: 0.976, green: 0.960, blue: 0.918, alpha: 1.0)
-        case .gray: return UIColor(red: 0.188, green: 0.192, blue: 0.200, alpha: 1.0)
-        case .dark: return UIColor(red: 0.008, green: 0.012, blue: 0.016, alpha: 1.0)
-        case .obsidian: return UIColor(hex: "#020304")
-        case .ember: return UIColor(hex: "#322407")
-        case .violet: return UIColor(hex: "#440D5F")
-        case .rose: return UIColor(hex: "#75105C")
+        case .berry: return UIColor(hex: "#82245f")
+        case .slate: return UIColor(hex: "#1c1e22")
+        case .cocoa: return UIColor(hex: "#41383a")
+        case .plum: return UIColor(hex: "#42305d")
+        case .teal: return UIColor(hex: "#164961")
+        case .aqua: return UIColor(hex: "#b6e3e9")
+        case .taupe: return UIColor(hex: "#85766a")
+        case .lilac: return UIColor(hex: "#8f77a8")
+        case .blush: return UIColor(hex: "#f582b4")
+        case .paper: return UIColor(hex: "#ecedef")
         }
     }
     
     var textColor: UIColor {
         switch self {
-        case .white: return .black
-        case .sepia: return UIColor(red: 0.294, green: 0.231, blue: 0.169, alpha: 1.0)
-        case .gray: return UIColor(red: 0.850, green: 0.850, blue: 0.860, alpha: 1.0)
-        case .dark: return .white
-        case .obsidian: return UIColor(hex: "#F7F7FA")
-        case .ember: return UIColor(hex: "#F6E7C6")
-        case .violet: return UIColor(hex: "#F2D9FF")
-        case .rose: return UIColor(hex: "#FFE0F4")
+        case .berry: return UIColor(hex: "#FCE7F4")
+        case .slate: return UIColor(hex: "#EEF5F3")
+        case .cocoa: return UIColor(hex: "#F4ECEC")
+        case .plum: return UIColor(hex: "#EFE7FF")
+        case .teal: return UIColor(hex: "#DFF9F7")
+        case .aqua: return UIColor(hex: "#07383E")
+        case .taupe: return UIColor(hex: "#2E2824")
+        case .lilac: return UIColor(hex: "#2F2439")
+        case .blush: return UIColor(hex: "#4B1731")
+        case .paper: return UIColor(hex: "#202124")
         }
     }
     
     var chromeBackgroundColor: UIColor {
-        switch self {
-        case .white: return UIColor(red: 0.965, green: 0.965, blue: 0.970, alpha: 1.0)
-        case .sepia: return UIColor(red: 0.945, green: 0.925, blue: 0.880, alpha: 1.0)
-        case .gray: return UIColor(red: 0.145, green: 0.149, blue: 0.157, alpha: 1.0)
-        case .dark: return UIColor(red: 0.008, green: 0.012, blue: 0.016, alpha: 1.0)
-        case .obsidian: return UIColor(hex: "#05080B")
-        case .ember: return UIColor(hex: "#3D2C09")
-        case .violet: return UIColor(hex: "#50106F")
-        case .rose: return UIColor(hex: "#86136A")
-        }
+        backgroundColor
     }
     
     var chromeBorderColor: UIColor {
-        switch self {
-        case .white: return UIColor.black.withAlphaComponent(0.08)
-        case .sepia: return UIColor.brown.withAlphaComponent(0.12)
-        case .gray: return UIColor.white.withAlphaComponent(0.08)
-        case .dark: return UIColor.white.withAlphaComponent(0.05)
-        case .obsidian: return UIColor.white.withAlphaComponent(0.08)
-        case .ember: return UIColor(hex: "#F6E7C6").withAlphaComponent(0.14)
-        case .violet: return UIColor(hex: "#F2D9FF").withAlphaComponent(0.14)
-        case .rose: return UIColor(hex: "#FFE0F4").withAlphaComponent(0.14)
-        }
+        textColor.withAlphaComponent(isDark ? 0.16 : 0.20)
     }
     
     var chromeTextColor: UIColor {
-        switch self {
-        case .white: return .black
-        case .sepia: return UIColor(red: 0.294, green: 0.231, blue: 0.169, alpha: 1.0)
-        case .gray, .dark: return .white
-        case .obsidian: return UIColor(hex: "#F7F7FA")
-        case .ember: return UIColor(hex: "#F6E7C6")
-        case .violet: return UIColor(hex: "#F2D9FF")
-        case .rose: return UIColor(hex: "#FFE0F4")
-        }
+        textColor
     }
     
     var swatchColor: UIColor {
@@ -92,55 +72,57 @@ enum ReaderTheme: String, Codable, CaseIterable, Identifiable {
     }
     
     var swatchBorderColor: UIColor {
-        switch self {
-        case .white: return UIColor.black.withAlphaComponent(0.15)
-        case .sepia: return UIColor.brown.withAlphaComponent(0.3)
-        case .gray: return UIColor.white.withAlphaComponent(0.2)
-        case .dark: return UIColor.white.withAlphaComponent(0.15)
-        case .obsidian: return UIColor.white.withAlphaComponent(0.18)
-        case .ember: return UIColor(hex: "#F6E7C6").withAlphaComponent(0.34)
-        case .violet: return UIColor(hex: "#F2D9FF").withAlphaComponent(0.34)
-        case .rose: return UIColor(hex: "#FFE0F4").withAlphaComponent(0.34)
-        }
+        textColor.withAlphaComponent(isDark ? 0.34 : 0.30)
     }
     
     var isDark: Bool {
-        self == .gray || self == .dark || self == .obsidian || self == .ember || self == .violet || self == .rose
+        switch self {
+        case .berry, .slate, .cocoa, .plum, .teal:
+            return true
+        case .aqua, .taupe, .lilac, .blush, .paper:
+            return false
+        }
     }
     
     var epubPreferencesTheme: ReadiumNavigator.Theme? {
-        switch self {
-        case .white: return .light
-        case .sepia: return .sepia
-        case .gray: return nil
-        case .dark: return .dark
-        case .obsidian, .ember, .violet, .rose: return nil
-        }
+        isDark ? .dark : .light
     }
     
     var readiumBackgroundColor: Color? {
-        switch self {
-        case .white: return Color(hex: "#FFFFFF")
-        case .sepia: return Color(hex: "#EDDBCB")
-        case .gray: return Color(hex: "#303136")
-        case .dark: return Color(hex: "#020304")
-        case .obsidian: return Color(hex: "#020304")
-        case .ember: return Color(hex: "#322407")
-        case .violet: return Color(hex: "#440D5F")
-        case .rose: return Color(hex: "#75105C")
-        }
+        Color(hex: backgroundHex)
     }
 
     var readiumTextColor: Color? {
+        Color(hex: textHex)
+    }
+
+    private var backgroundHex: String {
         switch self {
-        case .white: return Color(hex: "#111111")
-        case .sepia: return Color(hex: "#3B2F22")
-        case .gray: return Color(hex: "#D9D9DB")
-        case .dark: return Color(hex: "#FFFFFF")
-        case .obsidian: return Color(hex: "#F7F7FA")
-        case .ember: return Color(hex: "#F6E7C6")
-        case .violet: return Color(hex: "#F2D9FF")
-        case .rose: return Color(hex: "#FFE0F4")
+        case .berry: return "#82245f"
+        case .slate: return "#1c1e22"
+        case .cocoa: return "#41383a"
+        case .plum: return "#42305d"
+        case .teal: return "#164961"
+        case .aqua: return "#b6e3e9"
+        case .taupe: return "#85766a"
+        case .lilac: return "#8f77a8"
+        case .blush: return "#f582b4"
+        case .paper: return "#ecedef"
+        }
+    }
+
+    private var textHex: String {
+        switch self {
+        case .berry: return "#FCE7F4"
+        case .slate: return "#EEF5F3"
+        case .cocoa: return "#F4ECEC"
+        case .plum: return "#EFE7FF"
+        case .teal: return "#DFF9F7"
+        case .aqua: return "#07383E"
+        case .taupe: return "#2E2824"
+        case .lilac: return "#2F2439"
+        case .blush: return "#4B1731"
+        case .paper: return "#202124"
         }
     }
 }
@@ -153,6 +135,13 @@ enum ReaderFont: String, Codable, CaseIterable, Identifiable {
     case palatino = "Palatino"
     case iowanOldStyle = "Iowan Old Style"
     case athelas = "Athelas"
+    case hachiMaruPop = "Hachi Maru Pop"
+    case montserrat = "Montserrat"
+    case quicksand = "Quicksand"
+    case baskerville = "Baskerville"
+    case charter = "Charter"
+    case cochin = "Cochin"
+    case timesNewRoman = "Times New Roman"
     case seravek = "Seravek"
     case helveticaNeue = "Helvetica Neue"
     
@@ -167,6 +156,13 @@ enum ReaderFont: String, Codable, CaseIterable, Identifiable {
         case .palatino: return .palatino
         case .iowanOldStyle: return .iowanOldStyle
         case .athelas: return .athelas
+        case .hachiMaruPop: return FontFamily(rawValue: "Hachi Maru Pop")
+        case .montserrat: return FontFamily(rawValue: "Montserrat")
+        case .quicksand: return FontFamily(rawValue: "Quicksand")
+        case .baskerville: return FontFamily(rawValue: "Baskerville")
+        case .charter: return FontFamily(rawValue: "Charter")
+        case .cochin: return FontFamily(rawValue: "Cochin")
+        case .timesNewRoman: return FontFamily(rawValue: "Times New Roman")
         case .seravek: return .seravek
         case .helveticaNeue: return .helveticaNeue
         }
@@ -179,6 +175,13 @@ enum ReaderFont: String, Codable, CaseIterable, Identifiable {
         case .palatino: return "Palatino"
         case .iowanOldStyle: return "IowanOldStyle-Roman"
         case .athelas: return "Athelas"
+        case .hachiMaruPop: return "HachiMaruPop-Regular"
+        case .montserrat: return "Montserrat-Regular"
+        case .quicksand: return "Quicksand-Regular"
+        case .baskerville: return "Baskerville"
+        case .charter: return "Charter-Roman"
+        case .cochin: return "Cochin"
+        case .timesNewRoman: return "TimesNewRomanPSMT"
         case .seravek: return "Seravek"
         case .helveticaNeue: return "HelveticaNeue"
         }
@@ -190,19 +193,27 @@ enum ReaderFont: String, Codable, CaseIterable, Identifiable {
 @Model
 final class ReaderSettings {
     var id: UUID = UUID()
-    var themeRawValue: String = ReaderTheme.dark.rawValue
+    var themeRawValue: String = ReaderTheme.cocoa.rawValue
     var fontRawValue: String = ReaderFont.original.rawValue
     var fontSize: Double = 1.0
     var lineHeight: Double = 1.4
-    var pageMargins: Double = 1.0
+    var pageMargins: Double = 0.6
+    var letterSpacing: Double = 0.0
+    var wordSpacing: Double = 0.0
+    var paragraphSpacing: Double = 0.0
+    var isJustified: Bool = false
     var updatedAt: Date = Date()
-    
+
     init(
-        theme: ReaderTheme = .dark,
+        theme: ReaderTheme = .cocoa,
         font: ReaderFont = .original,
         fontSize: Double = 1.0,
         lineHeight: Double = 1.4,
-        pageMargins: Double = 1.0
+        pageMargins: Double = 0.6,
+        letterSpacing: Double = 0.0,
+        wordSpacing: Double = 0.0,
+        paragraphSpacing: Double = 0.0,
+        isJustified: Bool = false
     ) {
         self.id = UUID()
         self.themeRawValue = theme.rawValue
@@ -210,13 +221,17 @@ final class ReaderSettings {
         self.fontSize = fontSize
         self.lineHeight = lineHeight
         self.pageMargins = pageMargins
+        self.letterSpacing = letterSpacing
+        self.wordSpacing = wordSpacing
+        self.paragraphSpacing = paragraphSpacing
+        self.isJustified = isJustified
         self.updatedAt = Date()
     }
 }
 
 extension ReaderSettings {
     var theme: ReaderTheme {
-        get { ReaderTheme(rawValue: themeRawValue) ?? .dark }
+        get { ReaderTheme(rawValue: themeRawValue) ?? .cocoa }
         set {
             themeRawValue = newValue.rawValue
             updatedAt = Date()
@@ -231,15 +246,21 @@ extension ReaderSettings {
         }
     }
     
-    func buildPreferences() -> EPUBPreferences {
+    func buildPreferences(isIPadLayout: Bool = false) -> EPUBPreferences {
         EPUBPreferences(
             backgroundColor: theme.readiumBackgroundColor,
+            columnCount: isIPadLayout ? .one : nil,
             fontFamily: font.fontFamily,
             fontSize: fontSize,
+            letterSpacing: letterSpacing > 0 ? letterSpacing : nil,
             lineHeight: lineHeight,
             pageMargins: pageMargins,
+            paragraphSpacing: paragraphSpacing > 0 ? paragraphSpacing : nil,
+            spread: isIPadLayout ? .never : nil,
+            textAlign: isJustified ? .justify : nil,
             textColor: theme.readiumTextColor,
-            theme: theme.epubPreferencesTheme ?? .dark
+            theme: theme.epubPreferencesTheme ?? .dark,
+            wordSpacing: wordSpacing > 0 ? wordSpacing : nil
         )
     }
 }

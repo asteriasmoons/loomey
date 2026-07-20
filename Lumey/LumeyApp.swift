@@ -8,6 +8,8 @@ import SwiftData
 
 @main
 struct LumeyApp: App {
+    private static let cloudKitContainerIdentifier = "iCloud.im.lystaria.Lumey"
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             AuthUser.self,
@@ -23,6 +25,7 @@ struct LumeyApp: App {
             ChallengeSubmission.self,
             ChallengeUserProfile.self,
             EPUBBookmark.self,
+            EPUBHighlight.self,
             FeedAnnouncement.self,
             ReadingGoals.self,
             ReadingChallenge.self,
@@ -32,11 +35,17 @@ struct LumeyApp: App {
             ReadingGoalHistory.self,
             ReadingSession.self,
             ReadingLibrarySettings.self,
+            ReadingLibraryCustomFilter.self,
             GoalNote.self,
             ReadingList.self,
             ReaderSettings.self,
+            EPUBCollection.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: .private(Self.cloudKitContainerIdentifier)
+        )
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
@@ -290,6 +299,19 @@ struct LumeyApp: App {
                     }
 
                     UserDefaults.standard.set(true, forKey: backfillKey)
+                }
+                .task {
+                    let breakMigrationKey = "ReadingBreakFieldsMigrationV1"
+                    guard !UserDefaults.standard.bool(forKey: breakMigrationKey) else { return }
+                    let context = sharedModelContainer.mainContext
+                    let allStats = (try? context.fetch(FetchDescriptor<ReadingStats>())) ?? []
+                    for stat in allStats {
+                        stat.updatedAt = Date()
+                    }
+                    if !allStats.isEmpty {
+                        try? context.save()
+                    }
+                    UserDefaults.standard.set(true, forKey: breakMigrationKey)
                 }
         }
         .modelContainer(sharedModelContainer)

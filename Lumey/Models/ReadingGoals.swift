@@ -491,16 +491,18 @@ extension ReadingGoals {
         updatedAt = now
     }
     
-    func updateStreak(completedOn date: Date = Date()) {
+    func updateStreak(completedOn date: Date = Date(), bridgeBreakGap: Bool = false) {
         let calendar = Calendar.current
-        
+
         if let lastCompletedDate {
             if calendar.isDate(lastCompletedDate, inSameDayAs: date) {
                 return
             }
-            
+
             if let nextDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: lastCompletedDate)),
                calendar.isDate(nextDay, inSameDayAs: date) {
+                currentStreak += 1
+            } else if bridgeBreakGap {
                 currentStreak += 1
             } else {
                 currentStreak = 1

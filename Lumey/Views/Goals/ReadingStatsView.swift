@@ -27,7 +27,11 @@ struct ReadingStatsView: View {
     @Query
     private var allReviews: [BookReview]
 
-    private var stats: ReadingStats? { statsRecords.first }
+    @State private var showingBreakSheet = false
+
+    private var stats: ReadingStats? {
+        ReadingStats.preferredRecord(from: statsRecords)
+    }
 
     // MARK: - Derived aggregates
 
@@ -93,39 +97,59 @@ struct ReadingStatsView: View {
     }
 
     private var currentStreak: Int {
-        let calendar = Calendar.current
-        let readingDays = Set(
-            sessions.map {
-                calendar.startOfDay(for: $0.date)
+        // If on an active reading break, return the frozen streak value
+        if let s = stats, s.isOnReadingBreak {
+            if s.currentBreakDays > ReadingStats.maxBreakDays {
+                return 0
             }
-        )
+            return s.readingBreakStreakValue
+        }
 
+        let calendar = Calendar.current
+        let readingDays = Set(sessions.map { calendar.startOfDay(for: $0.date) })
         guard !readingDays.isEmpty else { return 0 }
 
         let today = calendar.startOfDay(for: Date())
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        let allBreakPeriods = stats?.breakPeriods ?? []
 
-        let anchorDay: Date
+        // Find anchor day – walk back from today, skipping break days,
+        // allowing at most one non-break non-reading grace day (same as original yesterday logic).
+        var anchorDay: Date?
+        var checkDay = today
+        var graceDaysUsed = 0
 
-        if readingDays.contains(today) {
-            anchorDay = today
-        } else if readingDays.contains(yesterday) {
-            anchorDay = yesterday
-        } else {
-            return 0
-        }
-
-        var streak = 0
-        var day = anchorDay
-
-        while readingDays.contains(day) {
-            streak += 1
-
-            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: day) else {
+        while graceDaysUsed <= 1 {
+            if readingDays.contains(checkDay) {
+                anchorDay = checkDay
                 break
             }
+            if ReadingStats.isDateInBreakPeriod(checkDay, periods: allBreakPeriods) {
+                guard let prev = calendar.date(byAdding: .day, value: -1, to: checkDay) else { break }
+                checkDay = prev
+                continue
+            }
+            graceDaysUsed += 1
+            guard let prev = calendar.date(byAdding: .day, value: -1, to: checkDay) else { break }
+            checkDay = prev
+        }
 
-            day = previousDay
+        guard let anchor = anchorDay else { return 0 }
+
+        // Count streak backward from anchor, bridging break periods
+        var streak = 0
+        var day = anchor
+
+        for _ in 0..<3650 {
+            if readingDays.contains(day) {
+                streak += 1
+                guard let prev = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+                day = prev
+            } else if ReadingStats.isDateInBreakPeriod(day, periods: allBreakPeriods) {
+                guard let prev = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+                day = prev
+            } else {
+                break
+            }
         }
 
         return streak
@@ -133,33 +157,38 @@ struct ReadingStatsView: View {
 
     private var bestStreak: Int {
         let calendar = Calendar.current
-        let sortedDays = Array(
-            Set(
-                sessions.map {
-                    calendar.startOfDay(for: $0.date)
-                }
-            )
-        )
-        .sorted()
-
+        let sortedDays = Array(Set(sessions.map { calendar.startOfDay(for: $0.date) })).sorted()
         guard !sortedDays.isEmpty else { return 0 }
 
+        let allBreakPeriods = stats?.breakPeriods ?? []
         var best = 1
         var current = 1
 
         for index in 1..<sortedDays.count {
             let previous = sortedDays[index - 1]
             let currentDay = sortedDays[index]
+            let dayAfterPrevious = calendar.date(byAdding: .day, value: 1, to: previous) ?? previous
 
-            if calendar.isDate(
-                currentDay,
-                inSameDayAs: calendar.date(byAdding: .day, value: 1, to: previous) ?? previous
-            ) {
+            if calendar.isDate(currentDay, inSameDayAs: dayAfterPrevious) {
                 current += 1
-                best = max(best, current)
             } else {
-                current = 1
+                // Check if the entire gap is covered by break periods
+                var gapDay = dayAfterPrevious
+                var gapBridged = true
+                while gapDay < currentDay {
+                    if !ReadingStats.isDateInBreakPeriod(gapDay, periods: allBreakPeriods) {
+                        gapBridged = false
+                        break
+                    }
+                    guard let next = calendar.date(byAdding: .day, value: 1, to: gapDay) else {
+                        gapBridged = false
+                        break
+                    }
+                    gapDay = next
+                }
+                current = gapBridged ? current + 1 : 1
             }
+            best = max(best, current)
         }
 
         return best
@@ -273,6 +302,15 @@ struct ReadingStatsView: View {
                 }
             }
             .navigationBarHidden(true)
+            .onAppear {
+                stats?.checkAndExpireBreak()
+                try? modelContext.save()
+            }
+            .sheet(isPresented: $showingBreakSheet) {
+                ReadingBreakSettingsSheet(stats: stats, currentStreak: currentStreak)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.hidden)
+            }
         }
     }
 }
@@ -312,8 +350,36 @@ private extension ReadingStatsView {
             Text("Your reading sessions, points, and momentum at a glance.")
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .foregroundStyle(LColors.textSecondary)
+
+            readingBreakButton
+                .padding(.top, 6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    var readingBreakButton: some View {
+        Button {
+            showingBreakSheet = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(stats?.isOnReadingBreak == true ? "playwavy" : "pausewavy")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 14, height: 14)
+
+                Text(stats?.isOnReadingBreak == true ? "Resume" : "Break")
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(LGradients.header)
+            )
+            .shadow(color: LColors.gradientPurple.opacity(0.30), radius: 10, y: 4)
+        }
     }
 }
 
@@ -880,9 +946,29 @@ private extension ReadingStatsView {
             HStack(spacing: 12) {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Current")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(LColors.textSecondary)
+                        HStack(spacing: 6) {
+                            Text("Current")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(LColors.textSecondary)
+
+                            if stats?.isOnReadingBreak == true {
+                                Text("Paused")
+                                    .font(.system(size: 9, weight: .black, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(
+                                        Capsule(style: .continuous)
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [LColors.gradientPurple.opacity(0.40), LColors.gradientBlue.opacity(0.28)],
+                                                    startPoint: .leading,
+                                                    endPoint: .trailing
+                                                )
+                                            )
+                                    )
+                            }
+                        }
                         Text("\(currentStreak)")
                             .font(.system(size: 28, weight: .black, design: .rounded))
                             .foregroundStyle(LGradients.header)
@@ -906,6 +992,61 @@ private extension ReadingStatsView {
                             .foregroundStyle(LColors.textSecondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            readingBreakInfoCard
+        }
+    }
+
+    var readingBreakInfoCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Image("pausewavy")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                        .foregroundStyle(LGradients.header)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.06))
+                        )
+                        .overlay(
+                            Circle()
+                                .strokeBorder(LGradients.header, lineWidth: 1)
+                        )
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Reading Break")
+                            .font(.system(size: 14, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+
+                        if stats?.isOnReadingBreak == true {
+                            let days = stats?.currentBreakDays ?? 0
+                            let remaining = max(0, ReadingStats.maxBreakDays - days)
+                            Text("Day \(days) of \(ReadingStats.maxBreakDays) · \(remaining) days remaining")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(LColors.textSecondary)
+                        } else {
+                            Text("No active break")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(LColors.textSecondary)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                if stats?.isOnReadingBreak == true || (stats?.totalReadingBreakDays ?? 0) > 0 {
+                    HStack(spacing: 10) {
+                        if stats?.isOnReadingBreak == true {
+                            statCapsule(title: "Current", value: "\(stats?.currentBreakDays ?? 0)")
+                        }
+                        statCapsule(title: "Total Break Days", value: "\((stats?.totalReadingBreakDays ?? 0) + (stats?.isOnReadingBreak == true ? (stats?.currentBreakDays ?? 0) : 0))")
+                    }
                 }
             }
         }
@@ -1027,6 +1168,279 @@ private extension ReadingStatsView {
         Text(text)
             .font(.system(size: 20, weight: .black, design: .rounded))
             .foregroundStyle(.white)
+    }
+}
+
+// MARK: - Reading Break Settings Sheet
+
+struct ReadingBreakSettingsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
+    let stats: ReadingStats?
+    let currentStreak: Int
+
+    @State private var showingConfirm = false
+
+    private var isOnBreak: Bool {
+        stats?.isOnReadingBreak == true
+    }
+
+    var body: some View {
+        ZStack {
+            LumeyBackground()
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Drag indicator
+                Capsule()
+                    .fill(Color.white.opacity(0.22))
+                    .frame(width: 36, height: 4)
+                    .padding(.top, 10)
+                    .padding(.bottom, 18)
+
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Header
+                        HStack(spacing: 14) {
+                            Image(isOnBreak ? "playwavy" : "pausewavy")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 26, height: 26)
+                                .foregroundStyle(LGradients.header)
+                                .frame(width: 50, height: 50)
+                                .background(
+                                    Circle()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [
+                                                    LColors.gradientBlue.opacity(0.18),
+                                                    LColors.gradientPurple.opacity(0.22)
+                                                ],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                )
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(LGradients.header, lineWidth: 1)
+                                )
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(isOnBreak ? "Resume Reading" : "Reading Break")
+                                    .font(.system(size: 22, weight: .black, design: .rounded))
+                                    .foregroundStyle(.white)
+
+                                Text(isOnBreak ? "Pick up your streak where you left off." : "Take a break without losing your streak.")
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(LColors.textSecondary)
+                            }
+                        }
+
+                        if isOnBreak {
+                            activeBreakContent
+                        } else {
+                            startBreakContent
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
+                }
+            }
+        }
+    }
+
+    // MARK: - Start Break Content
+
+    private var startBreakContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    breakInfoRow(
+                        icon: "flame",
+                        title: "Streak Protected",
+                        subtitle: "Your \(currentStreak)-day streak will be frozen and safe."
+                    )
+                    breakInfoRow(
+                        icon: "clockwavy",
+                        title: "Up to \(ReadingStats.maxBreakDays) Days",
+                        subtitle: "Breaks last a maximum of \(ReadingStats.maxBreakDays) days before auto-expiring."
+                    )
+                    breakInfoRow(
+                        icon: "flatbook",
+                        title: "Resume Anytime",
+                        subtitle: "Log a session after resuming to continue your streak."
+                    )
+                }
+            }
+
+            Button {
+                startBreak()
+            } label: {
+                HStack(spacing: 8) {
+                    Image("pausewavy")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+
+                    Text("Start Reading Break")
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(LGradients.header)
+                )
+                .shadow(color: LColors.gradientPurple.opacity(0.30), radius: 12, y: 6)
+            }
+        }
+    }
+
+    // MARK: - Active Break Content
+
+    private var activeBreakContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Break Duration")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(LColors.textSecondary)
+
+                            Text("\(stats?.currentBreakDays ?? 0) days")
+                                .font(.system(size: 28, weight: .black, design: .rounded))
+                                .foregroundStyle(LGradients.header)
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Frozen Streak")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(LColors.textSecondary)
+
+                            Text("\(stats?.readingBreakStreakValue ?? 0) days")
+                                .font(.system(size: 20, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                        }
+                    }
+
+                    // Progress bar showing days used
+                    let days = stats?.currentBreakDays ?? 0
+                    let progress = min(Double(days) / Double(ReadingStats.maxBreakDays), 1.0)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(Color.white.opacity(0.06))
+                                    .frame(height: 8)
+
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(LGradients.header)
+                                    .frame(width: max(0, geo.size.width * progress), height: 8)
+                            }
+                        }
+                        .frame(height: 8)
+
+                        Text("\(max(0, ReadingStats.maxBreakDays - days)) days remaining")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(LColors.textSecondary)
+                    }
+
+                    if let startDate = stats?.readingBreakStartDate {
+                        DottedDivider()
+
+                        HStack(spacing: 6) {
+                            Text("Started")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(LColors.textSecondary)
+
+                            Text(startDate, style: .date)
+                                .font(.system(size: 11, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+            }
+
+            Button {
+                resumeReading()
+            } label: {
+                HStack(spacing: 8) {
+                    Image("playwavy")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+
+                    Text("Resume Reading")
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(LGradients.header)
+                )
+                .shadow(color: LColors.gradientPurple.opacity(0.30), radius: 12, y: 6)
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func breakInfoRow(icon: String, title: String, subtitle: String) -> some View {
+        HStack(spacing: 12) {
+            Image(icon)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+                .foregroundStyle(LGradients.header)
+                .frame(width: 32, height: 32)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.06))
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(LGradients.header, lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(LColors.textSecondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func startBreak() {
+        let targetStats = stats ?? ReadingStats.fetchOrCreate(in: modelContext)
+        targetStats.startBreak(currentStreak: currentStreak)
+        try? modelContext.save()
+        dismiss()
+    }
+
+    private func resumeReading() {
+        let targetStats = stats ?? ReadingStats.fetchOrCreate(in: modelContext)
+        targetStats.endBreak()
+        try? modelContext.save()
+        dismiss()
     }
 }
 

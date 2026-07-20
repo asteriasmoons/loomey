@@ -12,6 +12,7 @@ struct ReadingBookDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var appState: AppState
     @State private var isSummaryExpanded = false
     @State private var showEPUBImporter = false
     @State private var showReader = false
@@ -52,6 +53,7 @@ struct ReadingBookDetailView: View {
                     bookID: book.id,
                     onClose: {
                         showReader = false
+                        appState.hideTabBar = false
                     },
                     onProgressChanged: { location in
                         book.epubReaderLocation = location
@@ -477,17 +479,11 @@ struct ReadingBookDetailView: View {
                 return
             }
 
-            let didAccess = url.startAccessingSecurityScopedResource()
-
-            guard didAccess else {
-                epubError = "Lumey could not access this EPUB file."
-                return
-            }
-
             book.epubLastOpenedAt = Date()
             book.updatedAt = Date()
             book.lastUpdated = Date()
             readerURL = url
+            appState.hideTabBar = true
             showReader = true
         } catch {
             epubError = error.localizedDescription

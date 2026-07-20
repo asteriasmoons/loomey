@@ -9,6 +9,9 @@ import PhotosUI
 
 struct AddEditBookSheet: View {
     @Environment(\.dismiss) private var dismiss
+
+    @Query(sort: \ReadingLibraryCustomFilter.sortIndex)
+    private var customFilters: [ReadingLibraryCustomFilter]
     
     let book: Book?
     let onSave: (Book) -> Void
@@ -39,6 +42,7 @@ struct AddEditBookSheet: View {
     @State private var tagsText = ""
     @State private var tropesText = ""
     @State private var topicsText = ""
+    @State private var selectedCustomFilterIDs: Set<UUID> = []
     @State private var ebookTotalPagesText = ""
     @State private var ebookCurrentPageText = ""
     
@@ -95,6 +99,7 @@ struct AddEditBookSheet: View {
                             LumeyTextField(title: "Topics", text: $topicsText)
                             LumeyTextField(title: "Tags", text: $tagsText)
                             LumeyTextField(title: "Tropes", text: $tropesText)
+                            customFilterPicker
                         }
                         
                         sectionCard(title: "Flags") {
@@ -253,6 +258,54 @@ struct AddEditBookSheet: View {
                 .italic()
         }
     }
+
+    @ViewBuilder
+    private var customFilterPicker: some View {
+        if !customFilters.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Custom Filters")
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundStyle(LColors.textSecondary)
+
+                FlowLayout(spacing: 8) {
+                    ForEach(customFilters) { filter in
+                        customFilterAssignmentChip(filter)
+                    }
+                }
+            }
+        }
+    }
+
+    private func customFilterAssignmentChip(_ filter: ReadingLibraryCustomFilter) -> some View {
+        let isSelected = selectedCustomFilterIDs.contains(filter.id)
+
+        return Button {
+            if isSelected {
+                selectedCustomFilterIDs.remove(filter.id)
+            } else {
+                selectedCustomFilterIDs.insert(filter.id)
+            }
+        } label: {
+            Text(filter.title)
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .foregroundStyle(isSelected ? .white : LColors.textSecondary)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isSelected ? LColors.gradientPurple : Color.white.opacity(0.06))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(
+                            isSelected ? LColors.gradientPurple : Color.white.opacity(0.11),
+                            lineWidth: 1
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+    }
     
     private func loadBook() {
         guard let book else { return }
@@ -284,6 +337,7 @@ struct AddEditBookSheet: View {
         tagsText = book.tags.joined(separator: ", ")
         tropesText = book.tropes.joined(separator: ", ")
         topicsText = book.topics.joined(separator: ", ")
+        selectedCustomFilterIDs = Set(book.customFilterIDs)
         ebookTotalPagesText = book.ebookTotalPages == 0 ? "" : String(book.ebookTotalPages)
         ebookCurrentPageText = book.ebookCurrentPage == 0 ? "" : String(book.ebookCurrentPage)
     }
@@ -323,6 +377,7 @@ struct AddEditBookSheet: View {
         targetBook.tags = commaSeparatedValues(tagsText)
         targetBook.tropes = commaSeparatedValues(tropesText)
         targetBook.topics = commaSeparatedValues(topicsText)
+        targetBook.customFilterIDs = Array(selectedCustomFilterIDs)
 
         targetBook.ebookTotalPages = Int(ebookTotalPagesText) ?? 0
         targetBook.ebookCurrentPage = Int(ebookCurrentPageText) ?? 0

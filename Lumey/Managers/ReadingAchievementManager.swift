@@ -51,7 +51,7 @@ enum ReadingAchievementManager {
         let notes = fetchNotes(modelContext: modelContext)
         let quotes = fetchQuotes(modelContext: modelContext)
 
-        let stat = stats.first
+        let stat = ReadingStats.preferredRecord(from: stats)
 
         let values = AchievementValues(
             pagesRead: stat?.totalPagesRead ?? calculatePagesRead(from: books),

@@ -14,6 +14,8 @@ enum LumeyTab: CaseIterable {
     case buddies
     case profile
     case challenges
+    case epubLibrary
+    case settings
 
     static let primaryTabs: [LumeyTab] = [
         .home,
@@ -23,10 +25,12 @@ enum LumeyTab: CaseIterable {
     ]
 
     static let overflowTabs: [LumeyTab] = [
+        .epubLibrary,
         .sprints,
         .buddies,
         .profile,
-        .challenges
+        .challenges,
+        .settings
     ]
 
     var icon: String {
@@ -39,6 +43,8 @@ enum LumeyTab: CaseIterable {
             return "levelup"
         case .goals:
             return "achievement"
+        case .epubLibrary:
+            return "bookstack"
         case .sprints:
             return "sparkbolt"
         case .buddies:
@@ -47,6 +53,8 @@ enum LumeyTab: CaseIterable {
             return "profilewavy"
         case .challenges:
             return "starwavy"
+        case .settings:
+            return "togglesettings"
         }
     }
 
@@ -55,11 +63,13 @@ enum LumeyTab: CaseIterable {
         case .home:
             return "Home"
         case .library:
-            return "Library"
+            return "Books"
         case .stats:
             return "Stats"
         case .goals:
             return "Goals"
+        case .epubLibrary:
+            return "Library"
         case .sprints:
             return "Sprints"
         case .buddies:
@@ -68,12 +78,15 @@ enum LumeyTab: CaseIterable {
             return "Profile"
         case .challenges:
             return "Challenges"
+        case .settings:
+            return "Settings"
         }
     }
 }
 
 struct MainTabView: View {
     @State private var selectedTab: LumeyTab = .home
+    @EnvironmentObject private var appState: AppState
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -83,10 +96,12 @@ struct MainTabView: View {
             selectedTabView
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .safeAreaInset(edge: .bottom) {
-                    Color.clear.frame(height: 120)
+                    Color.clear.frame(height: appState.hideTabBar ? 0 : 120)
                 }
 
-            LumeyTabBar(selectedTab: $selectedTab)
+            if !appState.hideTabBar {
+                LumeyTabBar(selectedTab: $selectedTab)
+            }
         }
         .ignoresSafeArea(edges: .bottom)
         .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -111,6 +126,10 @@ struct MainTabView: View {
             ProfileView()
         case .challenges:
             ChallengesView()
+        case .epubLibrary:
+            EPUBLibraryView()
+        case .settings:
+            SettingsView()
         }
     }
 }

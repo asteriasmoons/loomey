@@ -42,6 +42,9 @@ final class Book {
     @Attribute(.externalStorage)
     var epubBookmarkData: Data?
 
+    @Attribute(.externalStorage)
+    var epubFileData: Data?
+
     var epubOriginalFileName: String = ""
     var epubReaderLocation: String = ""
     var epubLastOpenedAt: Date?
@@ -59,6 +62,7 @@ final class Book {
     var tagsStorage: String = "[]"
     var tropesStorage: String = "[]"
     var topicsStorage: String = "[]"
+    var customFilterIDsStorage: String = "[]"
     
     // Cover / Visuals
     @Attribute(.externalStorage)
@@ -127,6 +131,7 @@ final class Book {
         tags: [String] = [],
         tropes: [String] = [],
         topics: [String] = [],
+        customFilterIDs: [UUID] = [],
         coverImageData: Data? = nil,
         coverURL: String = "",
         coverColorHex: String = "#03DBFC",
@@ -179,6 +184,7 @@ final class Book {
         self.tags = tags
         self.tropes = tropes
         self.topics = topics
+        self.customFilterIDs = customFilterIDs
         
         self.coverImageData = coverImageData
         self.coverURL = coverURL
@@ -265,6 +271,14 @@ extension Book {
             lastUpdated = Date()
         }
     }
+
+    var customFilterIDs: [UUID] {
+        get { decodeUUIDArray(from: customFilterIDsStorage) }
+        set {
+            customFilterIDsStorage = encodeUUIDArray(newValue)
+            lastUpdated = Date()
+        }
+    }
     
     var displayTitle: String {
         title.isEmpty ? "Untitled Book" : title
@@ -316,7 +330,7 @@ extension Book {
     }
 
     var hasEPUB: Bool {
-        epubBookmarkData != nil
+        epubFileData != nil || epubBookmarkData != nil
     }
 }
 
@@ -400,6 +414,21 @@ extension Book {
             return "[]"
         }
         
+        return string
+    }
+
+    private func decodeUUIDArray(from storage: String) -> [UUID] {
+        guard let data = storage.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([UUID].self, from: data)) ?? []
+    }
+
+    private func encodeUUIDArray(_ values: [UUID]) -> String {
+        guard let data = try? JSONEncoder().encode(values),
+              let string = String(data: data, encoding: .utf8)
+        else {
+            return "[]"
+        }
+
         return string
     }
 }
