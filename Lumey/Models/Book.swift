@@ -79,6 +79,9 @@ final class Book {
     var updatedAt: Date = Date()
     var deletedAt: Date?
     var lastUpdated: Date = Date()
+    var importSource: String = ""
+    var importBatchID: String = ""
+    var importedAt: Date?
     
     // Relationships
     @Relationship(deleteRule: .cascade, inverse: \BookNote.book)
@@ -141,6 +144,9 @@ final class Book {
         dateFinished: Date? = nil,
         updatedAt: Date = Date(),
         deletedAt: Date? = nil,
+        importSource: String = "",
+        importBatchID: String = "",
+        importedAt: Date? = nil,
         isFavorite: Bool = false,
         isArchived: Bool = false,
         isDNF: Bool = false,
@@ -197,6 +203,9 @@ final class Book {
         self.updatedAt = updatedAt
         self.deletedAt = deletedAt
         self.lastUpdated = Date()
+        self.importSource = importSource
+        self.importBatchID = importBatchID
+        self.importedAt = importedAt
         
         self.isFavorite = isFavorite
         self.isArchived = isArchived

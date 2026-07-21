@@ -4,10 +4,12 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct LibraryBookRow: View {
     let book: Book
     var onEdit: (() -> Void)? = nil
+    @Environment(\.modelContext) private var modelContext
     
     var body: some View {
         GlassCard {
@@ -56,68 +58,38 @@ struct LibraryBookRow: View {
                         Button {
                             onEdit?()
                         } label: {
-                            Image("pencil")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 18, height: 18)
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [LColors.gradientBlue, LColors.gradientPurple],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 34, height: 34)
-                                .background(
-                                    Circle()
-                                        .fill(Color.white.opacity(0.06))
-                                        .overlay(
-                                            Circle()
-                                                .strokeBorder(
-                                                    LinearGradient(
-                                                        colors: [LColors.gradientBlue, LColors.gradientPurple],
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    ),
-                                                    lineWidth: 1.2
-                                                )
-                                        )
-                                )
+                            LibraryBookIconButtonImage(
+                                iconName: "pencil",
+                                accessibilityLabel: "Edit book"
+                            )
                         }
                         .buttonStyle(.plain)
                         
                         NavigationLink {
                             ReadingBookDetailView(book: book)
                         } label: {
-                            Image("chevright")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 18, height: 18)
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [LColors.gradientBlue, LColors.gradientPurple],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 34, height: 34)
-                                .background(
-                                    Circle()
-                                        .fill(Color.white.opacity(0.06))
-                                        .overlay(
-                                            Circle()
-                                                .strokeBorder(
-                                                    LinearGradient(
-                                                        colors: [LColors.gradientBlue, LColors.gradientPurple],
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    ),
-                                                    lineWidth: 1.2
-                                                )
-                                        )
-                                )
+                            LibraryBookIconButtonImage(iconName: "chevright")
+                        }
+                        .buttonStyle(.plain)
+
+                        Menu {
+                            ForEach(BookStatus.allCases) { status in
+                                Button {
+                                    setStatus(status)
+                                } label: {
+                                    Label {
+                                        Text(status.rawValue)
+                                    } icon: {
+                                        Image(status == book.status ? "checkwavy" : "starmark")
+                                            .renderingMode(.template)
+                                    }
+                                }
+                            }
+                        } label: {
+                            LibraryBookIconButtonImage(
+                                iconName: "starmark",
+                                accessibilityLabel: "Change reading status"
+                            )
                         }
                         .buttonStyle(.plain)
                     }
@@ -142,6 +114,48 @@ struct LibraryBookRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private func setStatus(_ status: BookStatus) {
+        if status == .finished {
+            book.markFinished()
+        } else {
+            book.status = status
+
+            if status == .reading, book.dateStarted == nil {
+                book.dateStarted = Date()
+            }
+
+            book.isDNF = status == .didNotFinish
+            book.updatedAt = Date()
+            book.lastUpdated = Date()
+        }
+
+        try? modelContext.save()
+    }
+}
+
+private struct LibraryBookIconButtonImage: View {
+    let iconName: String
+    var accessibilityLabel: String? = nil
+
+    var body: some View {
+        Image(iconName)
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 18, height: 18)
+            .foregroundStyle(LGradients.header)
+            .frame(width: 34, height: 34)
+            .background(
+                Circle()
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(
+                        Circle()
+                            .strokeBorder(LGradients.header, lineWidth: 1.2)
+                    )
+            )
+            .accessibilityLabel(accessibilityLabel ?? iconName)
     }
 }
 

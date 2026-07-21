@@ -16,7 +16,17 @@ struct LumeyBookRecommendation: Identifiable, Codable {
     let releaseYear: Int?
     let rating: Double?
     let tags: [String]?
+    let genres: [String]?
+    let moods: [String]?
+    let tropes: [String]?
+    let themes: [String]?
     let source: String?
+    let strategy: String?
+    let strategyLabel: String?
+    let rationale: String?
+    let matchScore: Int?
+    let metadataScore: Int?
+    let finalScore: Int?
 
     enum CodingKeys: String, CodingKey {
         case title
@@ -27,12 +37,77 @@ struct LumeyBookRecommendation: Identifiable, Codable {
         case releaseYear
         case rating
         case tags
+        case genres
+        case moods
+        case tropes
+        case themes
         case source
+        case strategy
+        case strategyLabel
+        case rationale
+        case matchScore
+        case metadataScore
+        case finalScore
     }
 }
 
 struct LumeyBookRecommendationsResponse: Codable {
     let recs: [LumeyBookRecommendation]
+    let meta: LumeyBookRecommendationsMeta?
+}
+
+struct LumeyBookRecommendationsMeta: Codable {
+    let requestType: String
+    let normalizedQuery: String
+    let seedResolved: Bool
+    let candidateGroups: [LumeyBookRecommendationCandidateGroup]
+    let verifiedCandidateCount: Int
+}
+
+struct LumeyBookRecommendationCandidateGroup: Codable {
+    let strategy: String
+    let count: Int
+}
+
+struct LumeyBookRecommendationRequest: Codable {
+    let query: String
+    let desiredCount: Int
+    let minVerifiedResults: Int
+    let excludeBookKeys: [String]
+    let readerContext: LumeyRecommendationReaderContext
+}
+
+struct LumeyRecommendationReaderContext: Codable {
+    let libraryBookKeys: [String]
+    let finishedBookKeys: [String]
+    let ratings: [LumeyRecommendationRating]
+    let readingSessions: [LumeyRecommendationReadingSession]
+    let pagePreferences: LumeyRecommendationPagePreferences?
+    let favoriteGenres: [String]
+    let favoriteTropes: [String]
+    let favoriteMoods: [String]
+    let favoriteAuthors: [String]
+    let favoriteTags: [String]
+    let recentBookKeys: [String]
+    let alreadyRecommendedBookKeys: [String]
+}
+
+struct LumeyRecommendationRating: Codable {
+    let title: String
+    let author: String?
+    let rating: Double
+}
+
+struct LumeyRecommendationReadingSession: Codable {
+    let bookKey: String
+    let lastReadAt: String?
+    let pagesRead: Int?
+    let minutesRead: Int?
+}
+
+struct LumeyRecommendationPagePreferences: Codable {
+    let preferredMinPages: Int?
+    let preferredMaxPages: Int?
 }
 
 struct LumeyBookRecommendationErrorResponse: Codable {
@@ -65,24 +140,32 @@ final class LumeyBookRecommendationService {
 
     private let baseURL = "https://vox-api-production-31fd.up.railway.app"
 
-    func fetchRecommendations(for searchText: String) async throws -> [LumeyBookRecommendation] {
-        let trimmedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    func fetchRecommendations(
+        query: String,
+        readerContext: LumeyRecommendationReaderContext,
+        excludeBookKeys: [String]
+    ) async throws -> LumeyBookRecommendationsResponse {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
         print("Book recommendation request started")
-        print("Search text:", trimmedSearchText)
+        print("Search text:", trimmedQuery)
         print("Base URL:", baseURL)
 
         guard let url = URL(string: "\(baseURL)/api/books/recs") else {
             throw LumeyBookRecommendationServiceError.badURL
         }
 
-        let body: [String: String] = [
-            "genre": trimmedSearchText
-        ]
+        let body = LumeyBookRecommendationRequest(
+            query: trimmedQuery,
+            desiredCount: 30,
+            minVerifiedResults: 12,
+            excludeBookKeys: excludeBookKeys,
+            readerContext: readerContext
+        )
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 30
+        request.timeoutInterval = 90
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
@@ -113,7 +196,7 @@ final class LumeyBookRecommendationService {
         do {
             let decoded = try JSONDecoder().decode(LumeyBookRecommendationsResponse.self, from: data)
             print("Recommendations loaded:", decoded.recs.count)
-            return decoded.recs
+            return decoded
         } catch {
             print("Book recommendation JSON decode error:", error)
 

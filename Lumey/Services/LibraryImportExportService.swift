@@ -12,13 +12,83 @@ extension UTType {
     }
 }
 
-struct LibraryImportResult {
-    let books: [Book]
-    let skippedDuplicates: Int
+enum LibraryImportSource {
+    static let goodreads = "Goodreads"
+}
+
+struct BookDuplicateMatch: Identifiable {
+    let id = UUID()
+    let title: String
+    let author: String
+    let reason: String
+}
+
+struct GoodreadsBookDraft: Identifiable {
+    let id = UUID()
+    let title: String
+    let author: String
+    let publisher: String
+    let publicationYear: String
+    let isbn: String
+    let rating: Double
+    let status: BookStatus
+    let format: BookFormat
+    let totalPages: Int
+    let review: String
+    let privateNotes: String
+    let tags: [String]
+    let dateAdded: Date
+    let dateFinished: Date?
+    let isFavorite: Bool
+    let isReread: Bool
+
+    func makeBook(batchID: String, importedAt: Date) -> Book {
+        Book(
+            title: title,
+            author: author,
+            publisher: publisher,
+            publicationYear: publicationYear,
+            isbn: isbn,
+            rating: rating,
+            status: status,
+            format: format,
+            ownership: .unknown,
+            totalPages: totalPages,
+            tags: tags,
+            dateAdded: dateAdded,
+            dateFinished: status == .finished ? dateFinished : nil,
+            importSource: LibraryImportSource.goodreads,
+            importBatchID: batchID,
+            importedAt: importedAt,
+            isFavorite: isFavorite,
+            isReread: isReread
+        )
+    }
+}
+
+struct GoodreadsImportCandidate: Identifiable {
+    let id = UUID()
+    let rowNumber: Int
+    let draft: GoodreadsBookDraft
+    let duplicateMatches: [BookDuplicateMatch]
+
+    var isLikelyDuplicate: Bool {
+        !duplicateMatches.isEmpty
+    }
+}
+
+struct GoodreadsImportPreview: Identifiable {
+    let id: String
+    let importedAt: Date
+    let candidates: [GoodreadsImportCandidate]
     let skippedInvalidRows: Int
 
-    var importedCount: Int {
-        books.count
+    var defaultSelectedIDs: Set<UUID> {
+        Set(candidates.filter { !$0.isLikelyDuplicate }.map(\.id))
+    }
+
+    var duplicateCount: Int {
+        candidates.filter(\.isLikelyDuplicate).count
     }
 }
 
@@ -40,7 +110,7 @@ enum LibraryImportExportError: LocalizedError {
 }
 
 enum LibraryImportExportService {
-    static func importGoodreadsBooks(from url: URL, existingBooks: [Book]) throws -> LibraryImportResult {
+    static func previewGoodreadsImport(from url: URL, existingBooks: [Book]) throws -> GoodreadsImportPreview {
         let csv = try readCSVString(from: url)
         let rows = parseCSV(csv)
 
@@ -53,41 +123,78 @@ enum LibraryImportExportService {
             throw LibraryImportExportError.missingTitleColumn
         }
 
-        var seenKeys = Set(existingBooks.map(bookIdentityKey))
-        var importedBooks: [Book] = []
-        var skippedDuplicates = 0
+        var candidates: [GoodreadsImportCandidate] = []
+        var previousDrafts: [GoodreadsBookDraft] = []
         var skippedInvalidRows = 0
 
-        for row in rows.dropFirst() {
+        for (offset, row) in rows.dropFirst().enumerated() {
             guard row.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
                 continue
             }
 
-            guard let book = goodreadsBook(from: row, headerIndex: headerIndex) else {
+            guard let draft = goodreadsDraft(from: row, headerIndex: headerIndex) else {
                 skippedInvalidRows += 1
                 continue
             }
 
-            let key = bookIdentityKey(book)
-            guard !key.isEmpty else {
-                skippedInvalidRows += 1
-                continue
-            }
-
-            guard !seenKeys.contains(key) else {
-                skippedDuplicates += 1
-                continue
-            }
-
-            seenKeys.insert(key)
-            importedBooks.append(book)
+            let matches = duplicateMatches(for: draft, existingBooks: existingBooks, previousDrafts: previousDrafts)
+            candidates.append(
+                GoodreadsImportCandidate(
+                    rowNumber: offset + 2,
+                    draft: draft,
+                    duplicateMatches: matches
+                )
+            )
+            previousDrafts.append(draft)
         }
 
-        return LibraryImportResult(
-            books: importedBooks,
-            skippedDuplicates: skippedDuplicates,
+        return GoodreadsImportPreview(
+            id: UUID().uuidString,
+            importedAt: Date(),
+            candidates: candidates,
             skippedInvalidRows: skippedInvalidRows
         )
+    }
+
+    static func likelyLegacyGoodreadsImportedBooks(from books: [Book], now: Date = Date()) -> [Book] {
+        books
+            .filter { book in
+                guard book.deletedAt == nil,
+                      book.importSource.isEmpty,
+                      book.importBatchID.isEmpty else {
+                    return false
+                }
+
+                var score = 0
+                let recentImportWindow = now.addingTimeInterval(-72 * 60 * 60)
+
+                if book.lastUpdated >= recentImportWindow {
+                    score += 3
+                }
+
+                if book.ownership == .unknown {
+                    score += 2
+                }
+
+                if book.notes.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("Imported from Goodreads.") {
+                    score += 4
+                }
+
+                if !book.tags.isEmpty {
+                    score += 1
+                }
+
+                if !book.review.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    score += 1
+                }
+
+                if book.dateFinished != nil || book.totalPages > 0 {
+                    score += 1
+                }
+
+                return score >= 5
+            }
+            .sorted { $0.lastUpdated > $1.lastUpdated }
     }
 
     static func lumeyExportCSV(from books: [Book]) throws -> String {
@@ -131,6 +238,9 @@ enum LibraryImportExportService {
             "Date Added",
             "Date Started",
             "Date Finished",
+            "Import Source",
+            "Import Batch ID",
+            "Imported At",
             "Is Favorite",
             "Is Archived",
             "Is DNF",
@@ -170,6 +280,9 @@ enum LibraryImportExportService {
                 exportDateFormatter.string(from: book.dateAdded),
                 book.dateStarted.map(exportDateFormatter.string(from:)) ?? "",
                 book.dateFinished.map(exportDateFormatter.string(from:)) ?? "",
+                book.importSource,
+                book.importBatchID,
+                book.importedAt.map(exportDateFormatter.string(from:)) ?? "",
                 book.isFavorite ? "true" : "false",
                 book.isArchived ? "true" : "false",
                 book.isDNF ? "true" : "false",
@@ -201,44 +314,110 @@ enum LibraryImportExportService {
         throw LibraryImportExportError.unreadableFile
     }
 
-    private static func goodreadsBook(from row: [String], headerIndex: [String: Int]) -> Book? {
+    private static func goodreadsDraft(from row: [String], headerIndex: [String: Int]) -> GoodreadsBookDraft? {
         let title = value(["title"], in: row, headerIndex: headerIndex)
         guard !title.isEmpty else { return nil }
 
-        let author = value(["author", "author l f"], in: row, headerIndex: headerIndex)
         let isbn13 = cleanedISBN(value(["isbn13"], in: row, headerIndex: headerIndex))
         let isbn = isbn13.isEmpty ? cleanedISBN(value(["isbn"], in: row, headerIndex: headerIndex)) : isbn13
         let exclusiveShelf = value(["exclusive shelf"], in: row, headerIndex: headerIndex)
         let shelves = shelfValues(from: value(["bookshelves"], in: row, headerIndex: headerIndex))
-        let status = statusFromGoodreadsShelf(exclusiveShelf)
-        let totalPages = intValue(value(["number of pages"], in: row, headerIndex: headerIndex))
-        let dateRead = dateValue(value(["date read"], in: row, headerIndex: headerIndex))
-        let dateAdded = dateValue(value(["date added"], in: row, headerIndex: headerIndex)) ?? Date()
-        let myReview = value(["my review"], in: row, headerIndex: headerIndex)
-        let privateNotes = value(["private notes"], in: row, headerIndex: headerIndex)
-        let notes = importNotes(privateNotes: privateNotes)
-        let readCount = intValue(value(["read count"], in: row, headerIndex: headerIndex))
         let tags = shelves.filter { !isStatusShelf($0) }
+        let readCount = intValue(value(["read count"], in: row, headerIndex: headerIndex))
 
-        return Book(
+        return GoodreadsBookDraft(
             title: title,
-            author: author,
+            author: value(["author", "author l f"], in: row, headerIndex: headerIndex),
             publisher: value(["publisher"], in: row, headerIndex: headerIndex),
             publicationYear: value(["year published", "original publication year"], in: row, headerIndex: headerIndex),
             isbn: isbn,
             rating: ratingValue(value(["my rating"], in: row, headerIndex: headerIndex)),
-            status: status,
+            status: statusFromGoodreadsShelf(exclusiveShelf),
             format: formatFromBinding(value(["binding"], in: row, headerIndex: headerIndex)),
-            ownership: .unknown,
-            totalPages: totalPages,
-            review: myReview,
-            notes: notes,
+            totalPages: intValue(value(["number of pages"], in: row, headerIndex: headerIndex)),
+            review: value(["my review"], in: row, headerIndex: headerIndex),
+            privateNotes: value(["private notes"], in: row, headerIndex: headerIndex),
             tags: tags,
-            dateAdded: dateAdded,
-            dateFinished: status == .finished ? dateRead : nil,
+            dateAdded: dateValue(value(["date added"], in: row, headerIndex: headerIndex)) ?? Date(),
+            dateFinished: dateValue(value(["date read"], in: row, headerIndex: headerIndex)),
             isFavorite: tags.contains { $0.localizedCaseInsensitiveContains("favorite") },
             isReread: readCount > 1
         )
+    }
+
+    private static func duplicateMatches(
+        for draft: GoodreadsBookDraft,
+        existingBooks: [Book],
+        previousDrafts: [GoodreadsBookDraft]
+    ) -> [BookDuplicateMatch] {
+        let draftIdentity = BookIdentity(draft)
+        var matches: [BookDuplicateMatch] = []
+
+        for book in existingBooks where book.deletedAt == nil {
+            let identity = BookIdentity(book)
+
+            if let reason = duplicateReason(candidate: draftIdentity, existing: identity) {
+                matches.append(
+                    BookDuplicateMatch(
+                        title: book.displayTitle,
+                        author: book.displayAuthor,
+                        reason: reason
+                    )
+                )
+            }
+        }
+
+        for previousDraft in previousDrafts {
+            let identity = BookIdentity(previousDraft)
+
+            if let reason = duplicateReason(candidate: draftIdentity, existing: identity) {
+                matches.append(
+                    BookDuplicateMatch(
+                        title: previousDraft.title,
+                        author: previousDraft.author.isEmpty ? "Unknown Author" : previousDraft.author,
+                        reason: "Duplicate row in this CSV: \(reason)"
+                    )
+                )
+            }
+        }
+
+        return matches
+    }
+
+    private static func duplicateReason(candidate: BookIdentity, existing: BookIdentity) -> String? {
+        if !candidate.isbns.isDisjoint(with: existing.isbns) {
+            return "Matching ISBN"
+        }
+
+        guard !candidate.titleBase.isEmpty, !existing.titleBase.isEmpty else {
+            return nil
+        }
+
+        let authorsMatch = !candidate.author.isEmpty && candidate.author == existing.author
+        let authorsLooseMatch = !candidate.authorLoose.isEmpty && candidate.authorLoose == existing.authorLoose
+
+        if authorsMatch && candidate.titleFull == existing.titleFull {
+            return "Matching title and author"
+        }
+
+        if authorsMatch && candidate.titleBase == existing.titleBase {
+            return "Matching base title and author"
+        }
+
+        if authorsLooseMatch && candidate.titleBase == existing.titleBase {
+            return "Matching base title and author name"
+        }
+
+        if authorsLooseMatch && titleSimilarity(candidate.titleBase, existing.titleBase) >= 0.90 {
+            return "Very similar title and matching author"
+        }
+
+        if candidate.titleBase == existing.titleBase,
+           candidate.author.isEmpty || existing.author.isEmpty {
+            return "Matching title"
+        }
+
+        return nil
     }
 
     private static func indexHeaders(_ header: [String]) -> [String: Int] {
@@ -321,7 +500,9 @@ enum LibraryImportExportService {
     }
 
     private static func cleanedISBN(_ value: String) -> String {
-        value.filter { $0.isNumber || $0 == "X" || $0 == "x" }
+        value
+            .uppercased()
+            .filter { $0.isNumber || $0 == "X" }
     }
 
     private static func shelfValues(from value: String) -> [String] {
@@ -397,28 +578,188 @@ enum LibraryImportExportService {
         return nil
     }
 
-    private static func importNotes(privateNotes: String) -> String {
-        let trimmedNotes = privateNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func isbnVariants(_ value: String) -> Set<String> {
+        let isbn = cleanedISBN(value)
+        guard !isbn.isEmpty else { return [] }
 
-        if trimmedNotes.isEmpty {
-            return "Imported from Goodreads."
+        var variants: Set<String> = [isbn]
+
+        if isbn.count == 13,
+           isbn.hasPrefix("978"),
+           let isbn10 = convertISBN13ToISBN10(isbn) {
+            variants.insert(isbn10)
         }
 
-        return "Imported from Goodreads.\n\nGoodreads private notes:\n\(trimmedNotes)"
+        if isbn.count == 10,
+           let isbn13 = convertISBN10ToISBN13(isbn) {
+            variants.insert(isbn13)
+        }
+
+        return variants
     }
 
-    private static func bookIdentityKey(_ book: Book) -> String {
-        let isbn = cleanedISBN(book.isbn)
+    private static func convertISBN13ToISBN10(_ isbn13: String) -> String? {
+        guard isbn13.count == 13, isbn13.hasPrefix("978") else { return nil }
+        let bodyStart = isbn13.index(isbn13.startIndex, offsetBy: 3)
+        let bodyEnd = isbn13.index(isbn13.startIndex, offsetBy: 12)
+        let body = String(isbn13[bodyStart..<bodyEnd])
+        guard body.allSatisfy(\.isNumber) else { return nil }
 
-        if !isbn.isEmpty {
-            return "isbn:\(isbn.lowercased())"
+        var sum = 0
+        for (index, character) in body.enumerated() {
+            guard let digit = character.wholeNumberValue else { return nil }
+            sum += (10 - index) * digit
         }
 
-        let title = book.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let author = book.author.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let remainder = 11 - (sum % 11)
+        let check: String
 
-        guard !title.isEmpty else { return "" }
-        return "book:\(title)|\(author)"
+        if remainder == 10 {
+            check = "X"
+        } else if remainder == 11 {
+            check = "0"
+        } else {
+            check = String(remainder)
+        }
+
+        return body + check
+    }
+
+    private static func convertISBN10ToISBN13(_ isbn10: String) -> String? {
+        guard isbn10.count == 10 else { return nil }
+        let body = "978" + isbn10.prefix(9)
+        guard body.allSatisfy(\.isNumber) else { return nil }
+
+        var sum = 0
+        for (index, character) in body.enumerated() {
+            guard let digit = character.wholeNumberValue else { return nil }
+            sum += index.isMultiple(of: 2) ? digit : digit * 3
+        }
+
+        let check = (10 - (sum % 10)) % 10
+        return body + String(check)
+    }
+
+    private static func normalizedTitle(_ value: String, stripSubtitle: Bool) -> String {
+        var result = value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+
+        result = removeBracketedText(from: result)
+
+        if stripSubtitle {
+            for separator in [":", " - ", " -- ", " / "] {
+                if let range = result.range(of: separator) {
+                    result = String(result[..<range.lowerBound])
+                }
+            }
+        }
+
+        result = normalizedWordString(result)
+
+        for article in ["the ", "a ", "an "] where result.hasPrefix(article) {
+            result = String(result.dropFirst(article.count))
+        }
+
+        return result
+    }
+
+    private static func normalizedAuthor(_ value: String) -> String {
+        var author = value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if author.contains(",") {
+            let parts = author
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+            if parts.count >= 2 {
+                author = parts.dropFirst().joined(separator: " ") + " " + parts[0]
+            }
+        }
+
+        return normalizedWordString(author)
+    }
+
+    private static func looseAuthor(_ value: String) -> String {
+        normalizedAuthor(value)
+            .split(separator: " ")
+            .filter { !$0.isEmpty && $0.count > 1 }
+            .joined(separator: " ")
+    }
+
+    private static func removeBracketedText(from value: String) -> String {
+        var result = ""
+        var depth = 0
+
+        for character in value {
+            if character == "(" || character == "[" || character == "{" {
+                depth += 1
+                continue
+            }
+
+            if character == ")" || character == "]" || character == "}" {
+                depth = max(0, depth - 1)
+                continue
+            }
+
+            if depth == 0 {
+                result.append(character)
+            }
+        }
+
+        return result
+    }
+
+    private static func normalizedWordString(_ value: String) -> String {
+        let scalars = value.unicodeScalars.map { scalar in
+            CharacterSet.alphanumerics.contains(scalar) ? Character(scalar) : " "
+        }
+
+        return String(scalars)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    private static func titleSimilarity(_ lhs: String, _ rhs: String) -> Double {
+        guard !lhs.isEmpty, !rhs.isEmpty else { return 0 }
+        if lhs == rhs { return 1 }
+
+        let lhsTokens = Set(lhs.split(separator: " ").map(String.init))
+        let rhsTokens = Set(rhs.split(separator: " ").map(String.init))
+        let intersection = lhsTokens.intersection(rhsTokens).count
+        let union = lhsTokens.union(rhsTokens).count
+        let tokenSimilarity = union == 0 ? 0 : Double(intersection) / Double(union)
+        let editSimilarity = levenshteinSimilarity(lhs, rhs)
+
+        return max(tokenSimilarity, editSimilarity)
+    }
+
+    private static func levenshteinSimilarity(_ lhs: String, _ rhs: String) -> Double {
+        let lhsChars = Array(lhs)
+        let rhsChars = Array(rhs)
+        guard !lhsChars.isEmpty, !rhsChars.isEmpty else { return 0 }
+
+        var previous = Array(0...rhsChars.count)
+
+        for (lhsIndex, lhsChar) in lhsChars.enumerated() {
+            var current = [lhsIndex + 1]
+
+            for (rhsIndex, rhsChar) in rhsChars.enumerated() {
+                let insert = current[rhsIndex] + 1
+                let delete = previous[rhsIndex + 1] + 1
+                let replace = previous[rhsIndex] + (lhsChar == rhsChar ? 0 : 1)
+                current.append(min(insert, delete, replace))
+            }
+
+            previous = current
+        }
+
+        let distance = previous[rhsChars.count]
+        let maxLength = max(lhsChars.count, rhsChars.count)
+        return 1 - (Double(distance) / Double(maxLength))
     }
 
     private static func csvLine(_ fields: [String]) -> String {
@@ -459,5 +800,47 @@ enum LibraryImportExportService {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = format
         return formatter
+    }
+}
+
+private struct BookIdentity {
+    let isbns: Set<String>
+    let titleFull: String
+    let titleBase: String
+    let author: String
+    let authorLoose: String
+
+    init(_ book: Book) {
+        self.isbns = LibraryImportExportService.isbnVariantsForIdentity(book.isbn)
+        self.titleFull = LibraryImportExportService.normalizedTitleForIdentity(book.title, stripSubtitle: false)
+        self.titleBase = LibraryImportExportService.normalizedTitleForIdentity(book.title, stripSubtitle: true)
+        self.author = LibraryImportExportService.normalizedAuthorForIdentity(book.author)
+        self.authorLoose = LibraryImportExportService.looseAuthorForIdentity(book.author)
+    }
+
+    init(_ draft: GoodreadsBookDraft) {
+        self.isbns = LibraryImportExportService.isbnVariantsForIdentity(draft.isbn)
+        self.titleFull = LibraryImportExportService.normalizedTitleForIdentity(draft.title, stripSubtitle: false)
+        self.titleBase = LibraryImportExportService.normalizedTitleForIdentity(draft.title, stripSubtitle: true)
+        self.author = LibraryImportExportService.normalizedAuthorForIdentity(draft.author)
+        self.authorLoose = LibraryImportExportService.looseAuthorForIdentity(draft.author)
+    }
+}
+
+extension LibraryImportExportService {
+    static func isbnVariantsForIdentity(_ value: String) -> Set<String> {
+        isbnVariants(value)
+    }
+
+    static func normalizedTitleForIdentity(_ value: String, stripSubtitle: Bool) -> String {
+        normalizedTitle(value, stripSubtitle: stripSubtitle)
+    }
+
+    static func normalizedAuthorForIdentity(_ value: String) -> String {
+        normalizedAuthor(value)
+    }
+
+    static func looseAuthorForIdentity(_ value: String) -> String {
+        looseAuthor(value)
     }
 }

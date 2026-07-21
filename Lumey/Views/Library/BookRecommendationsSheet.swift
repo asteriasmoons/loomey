@@ -14,8 +14,13 @@ struct BookRecommendationsSheet: View {
     @Query(sort: \Book.lastUpdated, order: .reverse)
     private var books: [Book]
 
-    @State private var genre: String = ""
+    @Query(sort: \ReadingSession.date, order: .reverse)
+    private var sessions: [ReadingSession]
+
+    @State private var searchText: String = ""
     @State private var recommendations: [LumeyBookRecommendation] = []
+    @State private var recommendationMeta: LumeyBookRecommendationsMeta?
+    @State private var selectedStrategy: String = "all"
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var addedRecommendationKeys: Set<String> = []
@@ -77,7 +82,7 @@ struct BookRecommendationsSheet: View {
                     .font(.system(size: 30, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
 
-                Text("Search by a book title for the strongest similar-book recommendations, or try a genre or vibe for broader discovery.")
+                Text("Search by a book, author, genre, trope, theme, mood, or the kind of reading experience you want next.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
@@ -114,14 +119,14 @@ struct BookRecommendationsSheet: View {
     private var searchCard: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 14) {
-                TextField("Fourth Wing, fantasy, cozy mystery...", text: $genre)
+                TextField("Fourth Wing, cozy mystery, found family...", text: $searchText)
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled()
                     .padding(14)
                     .background(.white.opacity(0.14))
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-                Text("Tip: book titles usually give better results than broad genres.")
+                Text("Lumey will blend close matches, safer picks, hidden gems, recent releases, backlist, and adjacent reads.")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
@@ -148,8 +153,8 @@ struct BookRecommendationsSheet: View {
                         .foregroundStyle(.black)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
-                .disabled(isLoading || genre.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .opacity(genre.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.55 : 1)
+                .disabled(isLoading || searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .opacity(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.55 : 1)
             }
             .padding(16)
         }
@@ -167,7 +172,7 @@ struct BookRecommendationsSheet: View {
             Text("No recommendations yet")
                 .font(.headline)
 
-            Text("For best results, search a book title you already like. Genres and vibes can work too, but title searches give Lumey more to compare.")
+            Text("Search for a favorite book, a genre, a mood, a trope, or a plain-language reading craving.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -176,11 +181,117 @@ struct BookRecommendationsSheet: View {
     }
 
     private var recommendationsList: some View {
-        VStack(spacing: 14) {
-            ForEach(recommendations) { book in
-                recommendationCard(book)
+        VStack(alignment: .leading, spacing: 14) {
+            recommendationSummary
+            strategyFilter
+
+            if selectedStrategy == "all" {
+                ForEach(strategySections, id: \.strategy) { section in
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(strategyDisplayName(section.strategy))
+                            .font(.system(size: 17, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.top, 4)
+
+                        ForEach(section.books) { book in
+                            recommendationCard(book)
+                        }
+                    }
+                }
+            } else {
+                ForEach(filteredRecommendations) { book in
+                    recommendationCard(book)
+                }
             }
         }
+    }
+
+    private var recommendationSummary: some View {
+        HStack(spacing: 8) {
+            metadataPill("\(recommendations.count) books")
+
+            if let recommendationMeta {
+                metadataPill(requestTypeLabel(recommendationMeta.requestType))
+
+                if recommendationMeta.seedResolved {
+                    metadataPill("Seed matched")
+                }
+            }
+        }
+    }
+
+    private var strategyFilter: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                strategyFilterButton(title: "All", strategy: "all")
+
+                ForEach(availableStrategies, id: \.self) { strategy in
+                    strategyFilterButton(
+                        title: strategyDisplayName(strategy),
+                        strategy: strategy
+                    )
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private var availableStrategies: [String] {
+        recommendations
+            .compactMap(\.strategy)
+            .filter { !$0.isEmpty }
+            .reduce(into: [String]()) { result, strategy in
+                if !result.contains(strategy) {
+                    result.append(strategy)
+                }
+            }
+    }
+
+    private var filteredRecommendations: [LumeyBookRecommendation] {
+        guard selectedStrategy != "all" else { return recommendations }
+        return recommendations.filter { $0.strategy == selectedStrategy }
+    }
+
+    private var strategySections: [(strategy: String, books: [LumeyBookRecommendation])] {
+        if availableStrategies.isEmpty {
+            return [(strategy: "recommended", books: recommendations)]
+        }
+
+        var sections: [(strategy: String, books: [LumeyBookRecommendation])] = []
+
+        for strategy in availableStrategies {
+            let books = recommendations.filter { $0.strategy == strategy }
+            if !books.isEmpty {
+                sections.append((strategy: strategy, books: books))
+            }
+        }
+
+        return sections
+    }
+
+    private func strategyFilterButton(title: String, strategy: String) -> some View {
+        let isSelected = selectedStrategy == strategy
+
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                selectedStrategy = strategy
+            }
+        } label: {
+            Text(title)
+                .font(.caption.weight(.black))
+                .foregroundStyle(isSelected ? .black : .secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? LGradients.header : LinearGradient(colors: [.white.opacity(0.12), .white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(.white.opacity(isSelected ? 0.22 : 0.14), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private func recommendationCard(_ book: LumeyBookRecommendation) -> some View {
@@ -201,17 +312,25 @@ struct BookRecommendationsSheet: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    HStack(spacing: 8) {
-                        if let releaseYear = book.releaseYear {
-                            metadataPill("\(releaseYear)")
-                        }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            metadataPill(strategyDisplayName(book.strategyLabel ?? book.strategy))
 
-                        if let pages = book.pages {
-                            metadataPill("\(pages) pages")
-                        }
+                            if let matchScore = book.matchScore {
+                                metadataPill("Match \(matchScore)")
+                            }
 
-                        if let rating = book.rating {
-                            metadataPill(String(format: "%.1f", rating))
+                            if let releaseYear = book.releaseYear {
+                                metadataPill("\(releaseYear)")
+                            }
+
+                            if let pages = book.pages {
+                                metadataPill("\(pages) pages")
+                            }
+
+                            if let rating = book.rating {
+                                metadataPill(String(format: "%.1f", rating))
+                            }
                         }
                     }
                 }
@@ -258,11 +377,22 @@ struct BookRecommendationsSheet: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(isExpanded ? nil : 5)
 
-            if let tags = book.tags, !tags.isEmpty {
+            if isExpanded, let rationale = book.rationale, !rationale.isEmpty {
+                Text(rationale)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.white.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+
+            let readerLabels = recommendationLabels(for: book)
+            if !readerLabels.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(tags.prefix(6), id: \.self) { tag in
-                            metadataPill(tag)
+                        ForEach(readerLabels.prefix(8), id: \.self) { label in
+                            metadataPill(label)
                         }
                     }
                 }
@@ -355,7 +485,10 @@ struct BookRecommendationsSheet: View {
         let bookTotalPages = recommendation.pages ?? 0
         let bookCoverURL = recommendation.coverUrl ?? ""
         let bookTags = recommendation.tags ?? []
-        let bookGenres: [String] = bookTags.first.map { [$0] } ?? []
+        let bookGenres = recommendation.genres ?? []
+        let bookMoods = recommendation.moods ?? []
+        let bookTropes = recommendation.tropes ?? []
+        let bookTopics = recommendation.themes ?? []
 
         let bookPublicationYear: String
         if let releaseYear = recommendation.releaseYear {
@@ -365,10 +498,22 @@ struct BookRecommendationsSheet: View {
         }
 
         let bookNotes: String
+        let recommendationDetails = [
+            recommendation.strategyLabel ?? strategyDisplayName(recommendation.strategy),
+            recommendation.rationale
+        ]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " - ")
+
         if let source = recommendation.source, !source.isEmpty {
-            bookNotes = "Recommended by Lumey. Source: \(source)."
+            bookNotes = recommendationDetails.isEmpty
+                ? "Recommended by Lumey. Source: \(source)."
+                : "Recommended by Lumey. \(recommendationDetails). Source: \(source)."
         } else {
-            bookNotes = "Recommended by Lumey."
+            bookNotes = recommendationDetails.isEmpty
+                ? "Recommended by Lumey."
+                : "Recommended by Lumey. \(recommendationDetails)."
         }
 
         let bookStatus = BookStatus.toBeRead
@@ -387,7 +532,10 @@ struct BookRecommendationsSheet: View {
             totalPages: bookTotalPages,
             notes: bookNotes,
             genres: bookGenres,
+            moods: bookMoods,
             tags: bookTags,
+            tropes: bookTropes,
+            topics: bookTopics,
             coverURL: bookCoverURL
         )
 
@@ -480,19 +628,169 @@ struct BookRecommendationsSheet: View {
             .clipShape(Capsule())
     }
 
+    private func recommendationLabels(for recommendation: LumeyBookRecommendation) -> [String] {
+        uniqueValues(
+            (recommendation.genres ?? [])
+            + (recommendation.moods ?? [])
+            + (recommendation.tropes ?? [])
+            + (recommendation.themes ?? [])
+            + (recommendation.tags ?? [])
+        )
+    }
+
+    private func strategyDisplayName(_ strategy: String?) -> String {
+        guard let strategy, !strategy.isEmpty else { return "Recommended" }
+
+        switch strategy {
+        case "closest_match":
+            return "Closest Match"
+        case "reader_safe":
+            return "Reader Safe"
+        case "hidden_gems":
+            return "Hidden Gem"
+        case "recent_releases":
+            return "Recent Release"
+        case "backlist":
+            return "Backlist"
+        case "adjacent_reads":
+            return "Adjacent Read"
+        default:
+            return strategy
+                .replacingOccurrences(of: "_", with: " ")
+                .split(separator: " ")
+                .map { $0.capitalized }
+                .joined(separator: " ")
+        }
+    }
+
+    private func requestTypeLabel(_ requestType: String) -> String {
+        strategyDisplayName(requestType)
+    }
+
+    private func uniqueValues(_ values: [String]) -> [String] {
+        values.reduce(into: [String]()) { result, value in
+            let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedValue.isEmpty else { return }
+
+            if !result.contains(where: { $0.localizedCaseInsensitiveCompare(trimmedValue) == .orderedSame }) {
+                result.append(trimmedValue)
+            }
+        }
+    }
+
+    private func topValues(_ values: [String], limit: Int) -> [String] {
+        let grouped = Dictionary(grouping: values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }) {
+            $0.lowercased()
+        }
+
+        return grouped
+            .map { _, values in
+                (value: values[0], count: values.count)
+            }
+            .sorted { lhs, rhs in
+                if lhs.count == rhs.count {
+                    return lhs.value.localizedCaseInsensitiveCompare(rhs.value) == .orderedAscending
+                }
+
+                return lhs.count > rhs.count
+            }
+            .map(\.value)
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    private func makeReaderContext(excludeBookKeys: [String]) -> LumeyRecommendationReaderContext {
+        let activeBooks = books.filter { !$0.isArchived }
+        let finishedBooks = activeBooks.filter { $0.status == .finished || $0.dateFinished != nil }
+        let lovedBooks = activeBooks.filter { $0.isFavorite || $0.rating >= 4 }
+        let recentBooks = activeBooks
+            .sorted { $0.lastUpdated > $1.lastUpdated }
+            .prefix(20)
+            .map { recommendationKey(title: $0.title, author: $0.author) }
+        let recentSessions = sessions.prefix(40).map { session in
+            LumeyRecommendationReadingSession(
+                bookKey: readingSessionBookKey(session),
+                lastReadAt: isoFormatter.string(from: session.date),
+                pagesRead: session.pagesRead > 0 ? session.pagesRead : nil,
+                minutesRead: session.durationMinutes > 0 ? session.durationMinutes : nil
+            )
+        }
+
+        return LumeyRecommendationReaderContext(
+            libraryBookKeys: activeBooks.map { recommendationKey(title: $0.title, author: $0.author) },
+            finishedBookKeys: finishedBooks.map { recommendationKey(title: $0.title, author: $0.author) },
+            ratings: activeBooks
+                .filter { $0.rating > 0 }
+                .prefix(80)
+                .map { LumeyRecommendationRating(title: $0.title, author: $0.author, rating: $0.rating) },
+            readingSessions: Array(recentSessions),
+            pagePreferences: pagePreferences(from: finishedBooks),
+            favoriteGenres: topValues(lovedBooks.flatMap(\.genres), limit: 8),
+            favoriteTropes: topValues(lovedBooks.flatMap(\.tropes), limit: 8),
+            favoriteMoods: topValues(lovedBooks.flatMap(\.moods), limit: 8),
+            favoriteAuthors: topValues(lovedBooks.map(\.author), limit: 8),
+            favoriteTags: topValues(lovedBooks.flatMap(\.tags), limit: 10),
+            recentBookKeys: Array(recentBooks),
+            alreadyRecommendedBookKeys: excludeBookKeys
+        )
+    }
+
+    private var isoFormatter: ISO8601DateFormatter {
+        ISO8601DateFormatter()
+    }
+
+    private func pagePreferences(from books: [Book]) -> LumeyRecommendationPagePreferences? {
+        let pageCounts = books
+            .map(\.totalPages)
+            .filter { $0 > 0 }
+            .sorted()
+
+        guard pageCounts.count >= 3 else { return nil }
+
+        let lowerIndex = max(0, Int(Double(pageCounts.count - 1) * 0.20))
+        let upperIndex = min(pageCounts.count - 1, Int(Double(pageCounts.count - 1) * 0.80))
+
+        return LumeyRecommendationPagePreferences(
+            preferredMinPages: pageCounts[lowerIndex],
+            preferredMaxPages: pageCounts[upperIndex]
+        )
+    }
+
+    private func readingSessionBookKey(_ session: ReadingSession) -> String {
+        if let linkedBookID = session.linkedBookID,
+           let book = books.first(where: { $0.id == linkedBookID }) {
+            return recommendationKey(title: book.title, author: book.author)
+        }
+
+        return recommendationKey(title: session.linkedBookTitle, author: "")
+    }
+
     @MainActor
     private func fetchRecommendations() async {
-        let trimmedGenre = genre.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedGenre.isEmpty else { return }
+        let trimmedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSearchText.isEmpty else { return }
 
         isLoading = true
         errorMessage = nil
+        recommendations = []
+        recommendationMeta = nil
+        selectedStrategy = "all"
 
         do {
-            recommendations = try await LumeyBookRecommendationService.shared.fetchRecommendations(for: trimmedGenre)
+            let excludeBookKeys = books
+                .filter { !$0.isArchived }
+                .map { recommendationKey(title: $0.title, author: $0.author) }
+            let response = try await LumeyBookRecommendationService.shared.fetchRecommendations(
+                query: trimmedSearchText,
+                readerContext: makeReaderContext(excludeBookKeys: excludeBookKeys),
+                excludeBookKeys: excludeBookKeys
+            )
+
+            recommendations = response.recs
+            recommendationMeta = response.meta
 
             if recommendations.isEmpty {
-                errorMessage = "No recommendations found. Try a specific book title instead of a broad genre."
+                errorMessage = "No recommendations found. Try a slightly more specific book, mood, trope, or reading vibe."
             }
         } catch {
             print("❌ Recommendation Error:", error)
