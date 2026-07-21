@@ -11,7 +11,7 @@ struct ChallengeLeaderboardView: View {
 
     @State private var selectedProfile: ChallengeUserProfile?
 
-    let challenge: ReadingChallenge
+    let challenge: ReadingChallenge?
     let submissions: [ChallengeSubmission]
     let profiles: [ChallengeUserProfile]
 
@@ -44,6 +44,19 @@ struct ChallengeLeaderboardView: View {
         submissions.filter { $0.validationStatus == .approved }.count
     }
 
+    private var leaderboardTitle: String {
+        challenge?.title ?? "All Challenges"
+    }
+
+    private var rewardValue: String {
+        guard let challenge else { return "Mixed" }
+        return "\(challenge.points)"
+    }
+
+    private var isAllChallengesLeaderboard: Bool {
+        challenge == nil
+    }
+
     var body: some View {
         ZStack {
             LumeyBackground()
@@ -71,7 +84,7 @@ struct ChallengeLeaderboardView: View {
         .adaptivePresentation(item: $selectedProfile, useFullScreenCover: horizontalSizeClass == .regular) { profile in
             ProfileView(
                 challengeProfile: profile,
-                currentChallengeTitle: challenge.title,
+                currentChallengeTitle: challenge?.title,
                 recentChallengeSubmissions: submissions.filter {
                     $0.userID == profile.userID
                 },
@@ -92,7 +105,7 @@ struct ChallengeLeaderboardView: View {
                     .font(.system(size: 32, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
 
-                Text(challenge.title)
+                Text(leaderboardTitle)
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(LColors.textSecondary)
                     .lineLimit(1)
@@ -168,7 +181,7 @@ struct ChallengeLeaderboardView: View {
                 HStack(spacing: 10) {
                     leaderboardMiniStat(title: "Entries", value: "\(submissions.count)")
                     leaderboardMiniStat(title: "Approved", value: "\(approvedCount)")
-                    leaderboardMiniStat(title: "Reward", value: "\(challenge.points)")
+                    leaderboardMiniStat(title: "Reward", value: rewardValue)
                 }
             }
         }
@@ -286,6 +299,11 @@ struct ChallengeLeaderboardView: View {
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundStyle(LColors.textSecondary)
                                 .lineLimit(2)
+                        } else if isAllChallengesLeaderboard && !displayChallengeTitle(for: submission).isEmpty {
+                            Text(displayChallengeTitle(for: submission))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(LColors.textSecondary)
+                                .lineLimit(1)
                         } else {
                             Text(submission.submittedDate.formatted(date: .abbreviated, time: .omitted))
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -426,6 +444,10 @@ struct ChallengeLeaderboardView: View {
 
         let submissionUsername = submission.username.trimmingCharacters(in: .whitespacesAndNewlines)
         return submissionUsername.isEmpty ? "Reader" : submissionUsername
+    }
+
+    private func displayChallengeTitle(for submission: ChallengeSubmission) -> String {
+        submission.challengeTitle.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func rankGradient(for rank: Int) -> LinearGradient {

@@ -68,6 +68,7 @@ struct ChallengesView: View {
             }
             .task {
                 seedIfNeeded()
+                backfillSubmissionChallengeTitles()
             }
             .adaptivePresentation(item: $selectedChallenge, useFullScreenCover: horizontalSizeClass == .regular) { challenge in
                 ChallengeDetailView(challenge: challenge)
@@ -86,15 +87,13 @@ struct ChallengesView: View {
                 .presentationDragIndicator(.hidden)
             }
             .adaptivePresentation(isPresented: $showingLeaderboard, useFullScreenCover: horizontalSizeClass == .regular) {
-                if let challenge = featuredChallenge ?? allChallenges.first {
-                    ChallengeLeaderboardView(
-                        challenge: challenge,
-                        submissions: allSubmissions.filter { $0.challengeID == challenge.id },
-                        profiles: allProfiles
-                    )
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.hidden)
-                }
+                ChallengeLeaderboardView(
+                    challenge: nil,
+                    submissions: allSubmissions,
+                    profiles: allProfiles
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
             }
             .navigationDestination(isPresented: $showingFeedRoute) {
                 ChallengesFeedView()
@@ -415,6 +414,24 @@ struct ChallengesView: View {
     private func seedIfNeeded() {
         let manager = ChallengeManager(modelContext: modelContext)
         manager.seedChallengesIfNeeded()
+    }
+
+    private func backfillSubmissionChallengeTitles() {
+        var didChange = false
+
+        for submission in allSubmissions {
+            guard let challenge = challenge(for: submission.challengeID) else { continue }
+            let currentTitle = submission.challengeTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if currentTitle != challenge.title {
+                submission.challengeTitle = challenge.title
+                didChange = true
+            }
+        }
+
+        if didChange {
+            try? modelContext.save()
+        }
     }
 
     // MARK: - Reusable Components
