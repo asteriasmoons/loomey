@@ -18,16 +18,16 @@ struct ChallengeLeaderboardView: View {
     var onProfileTapped: ((ChallengeUserProfile) -> Void)?
     var onSubmissionTapped: ((ChallengeSubmission) -> Void)?
 
+    private var approvedSubmissions: [ChallengeSubmission] {
+        submissions.filter { $0.validationStatus == .approved }
+    }
+
+    private var visibleRankedSubmissions: [ChallengeSubmission] {
+        Array(rankedSubmissions.prefix(9))
+    }
+
     private var rankedSubmissions: [ChallengeSubmission] {
-        submissions.sorted { first, second in
-            if first.validationStatus == .approved && second.validationStatus != .approved {
-                return true
-            }
-
-            if first.validationStatus != .approved && second.validationStatus == .approved {
-                return false
-            }
-
+        approvedSubmissions.sorted { first, second in
             if first.likeCount != second.likeCount {
                 return first.likeCount > second.likeCount
             }
@@ -41,7 +41,7 @@ struct ChallengeLeaderboardView: View {
     }
 
     private var approvedCount: Int {
-        submissions.filter { $0.validationStatus == .approved }.count
+        approvedSubmissions.count
     }
 
     private var leaderboardTitle: String {
@@ -169,7 +169,7 @@ struct ChallengeLeaderboardView: View {
                             .font(.system(size: 18, weight: .black, design: .rounded))
                             .foregroundStyle(.white)
 
-                        Text("Ranked by approved status, likes, comments, then earliest submission.")
+                        Text("Ranked by likes, comments, then earliest approved submission.")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(LColors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -179,7 +179,7 @@ struct ChallengeLeaderboardView: View {
                 }
 
                 HStack(spacing: 10) {
-                    leaderboardMiniStat(title: "Entries", value: "\(submissions.count)")
+                    leaderboardMiniStat(title: "Top", value: "\(visibleRankedSubmissions.count)")
                     leaderboardMiniStat(title: "Approved", value: "\(approvedCount)")
                     leaderboardMiniStat(title: "Reward", value: rewardValue)
                 }
@@ -231,7 +231,7 @@ struct ChallengeLeaderboardView: View {
                         .font(.system(size: 18, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
 
-                    Text("Challenge entries will appear here once readers start submitting.")
+                    Text("Approved challenge entries will appear here once readers complete submissions.")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(LColors.textSecondary)
                         .multilineTextAlignment(.center)
@@ -248,7 +248,7 @@ struct ChallengeLeaderboardView: View {
             sectionHeader(icon: "startrophyfill", title: "Top Entries")
 
             VStack(spacing: 10) {
-                ForEach(Array(rankedSubmissions.enumerated()), id: \.element.id) { index, submission in
+                ForEach(Array(visibleRankedSubmissions.enumerated()), id: \.element.id) { index, submission in
                     leaderboardRow(
                         rank: index + 1,
                         submission: submission,
@@ -333,42 +333,22 @@ struct ChallengeLeaderboardView: View {
     }
 
     private func rankBadge(_ rank: Int) -> some View {
-        ZStack {
-            Circle()
-                .fill(rankGradient(for: rank))
-                .shadow(
-                    color: LColors.gradientBlue.opacity(rank <= 3 ? 0.20 : 0.06),
-                    radius: rank <= 3 ? 12 : 4,
-                    y: 5
-                )
-
-            VStack(spacing: 1) {
-                Image(rankIcon(for: rank))
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: rank <= 3 ? 15 : 12, height: rank <= 3 ? 15 : 12)
-                    .foregroundStyle(.white)
-
-                Text("#\(rank)")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-            }
-        }
-        .frame(width: 42, height: 42)
-    }
-
-    private func rankIcon(for rank: Int) -> String {
-        switch rank {
-        case 1:
-            return "1wavy"
-        case 2:
-            return "2wavy"
-        case 3:
-            return "3wavy"
-        default:
-            return "starwavy"
-        }
+        Image("\(rank)wavy")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 18, height: 18)
+            .foregroundStyle(.white)
+            .frame(width: 40, height: 40)
+            .background(
+                Circle()
+                    .fill(rankGradient(for: rank))
+                    .shadow(
+                        color: LColors.gradientBlue.opacity(rank <= 3 ? 0.20 : 0.06),
+                        radius: rank <= 3 ? 12 : 4,
+                        y: 5
+                    )
+            )
     }
 
     private func avatarView(
