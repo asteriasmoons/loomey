@@ -7,6 +7,9 @@ import SwiftUI
 
 struct ChallengeLeaderboardView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    @State private var selectedProfile: ChallengeUserProfile?
 
     let challenge: ReadingChallenge
     let submissions: [ChallengeSubmission]
@@ -64,6 +67,19 @@ struct ChallengeLeaderboardView: View {
                     .padding(.bottom, 34)
                 }
             }
+        }
+        .adaptivePresentation(item: $selectedProfile, useFullScreenCover: horizontalSizeClass == .regular) { profile in
+            ProfileView(
+                challengeProfile: profile,
+                currentChallengeTitle: challenge.title,
+                recentChallengeSubmissions: submissions.filter {
+                    $0.userID == profile.userID
+                },
+                onChallengeSubmissionTapped: onSubmissionTapped,
+                showsCloseButton: true
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
         }
     }
 
@@ -244,7 +260,11 @@ struct ChallengeLeaderboardView: View {
 
                     Button {
                         if let profile {
-                            onProfileTapped?(profile)
+                            if let onProfileTapped {
+                                onProfileTapped(profile)
+                            } else {
+                                selectedProfile = profile
+                            }
                         }
                     } label: {
                         avatarView(profile: profile, submission: submission)
@@ -319,7 +339,7 @@ struct ChallengeLeaderboardView: View {
         }
         .frame(width: 42, height: 42)
     }
-    
+
     private func rankIcon(for rank: Int) -> String {
         switch rank {
         case 1:
@@ -465,6 +485,21 @@ struct ChallengeLeaderboardView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func adaptivePresentation<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        useFullScreenCover: Bool,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        if useFullScreenCover {
+            self.fullScreenCover(item: item, content: content)
+        } else {
+            self.sheet(item: item, content: content)
         }
     }
 }

@@ -16,10 +16,10 @@ struct ChallengesView: View {
 
     @Query(sort: \ChallengeEntry.startDate, order: .reverse)
     private var allEntries: [ChallengeEntry]
-    
+
     @Query(sort: \ChallengeSubmission.submittedDate, order: .reverse)
     private var allSubmissions: [ChallengeSubmission]
-    
+
     @Query(sort: \ChallengeUserProfile.username)
     private var allProfiles: [ChallengeUserProfile]
 
@@ -40,25 +40,25 @@ struct ChallengesView: View {
             ZStack {
                 LumeyBackground()
                     .ignoresSafeArea()
-                
+
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: LSpacing.sectionGap) {
                         headerSection
-                        
+
                         if let featured = featuredChallenge {
                             featuredSection(featured)
                         }
-                        
+
                         if !weeklyChallenges.isEmpty {
                             weeklySection
                         }
-                        
+
                         if !activeChallenges.isEmpty {
                             activeSection
                         }
-                        
+
                         categorySection
-                        
+
                         allChallengesSection
                     }
                     .padding(.horizontal, 20)
@@ -75,8 +75,12 @@ struct ChallengesView: View {
                     .presentationDragIndicator(.hidden)
             }
             .adaptivePresentation(isPresented: $showingProfile, useFullScreenCover: horizontalSizeClass == .regular) {
-                ChallengeUserProfileView(
-                    profile: currentChallengeProfile
+                ProfileView(
+                    challengeProfile: currentChallengeProfile,
+                    recentChallengeSubmissions: allSubmissions.filter {
+                        $0.userID == currentChallengeProfile.userID
+                    },
+                    showsCloseButton: true
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
@@ -155,7 +159,7 @@ struct ChallengesView: View {
                 )
             }
             .buttonStyle(.plain)
-            
+
             Button {
                 showingFeedRoute = true
             } label: {
@@ -177,7 +181,7 @@ struct ChallengesView: View {
                     )
             }
             .buttonStyle(.plain)
-            
+
             Button {
                 showingLeaderboard = true
             } label: {
@@ -199,7 +203,7 @@ struct ChallengesView: View {
                     )
             }
             .buttonStyle(.plain)
-            
+
         }
     }
 
@@ -336,19 +340,24 @@ struct ChallengesView: View {
 
     private var allChallengesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle(selectedCategory?.displayName ?? "All Challenges")
+            if let selectedCategory {
+                categoryHeader(
+                    category: selectedCategory,
+                    count: filteredChallenges.count
+                )
 
-            ForEach(filteredChallenges) { challenge in
-                Button {
-                    selectedChallenge = challenge
-                } label: {
-                    ChallengeCardView(
-                        challenge: challenge,
-                        entry: entryFor(challenge),
-                        badgeType: nil
-                    )
+                challengeList(filteredChallenges)
+            } else {
+                ForEach(groupedChallenges, id: \.category.id) { group in
+                    VStack(alignment: .leading, spacing: 10) {
+                        categoryHeader(
+                            category: group.category,
+                            count: group.challenges.count
+                        )
+
+                        challengeList(group.challenges)
+                    }
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -374,6 +383,27 @@ struct ChallengesView: View {
         return allChallenges
     }
 
+    private var groupedChallenges: [(category: ChallengeCategory, challenges: [ReadingChallenge])] {
+        ChallengeCategory.allCases.compactMap { category in
+            let challenges = allChallenges
+                .filter { $0.category == category }
+                .sorted { lhs, rhs in
+                    if lhs.isFeatured != rhs.isFeatured {
+                        return lhs.isFeatured && !rhs.isFeatured
+                    }
+
+                    if lhs.isWeekly != rhs.isWeekly {
+                        return lhs.isWeekly && !rhs.isWeekly
+                    }
+
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                }
+
+            guard !challenges.isEmpty else { return nil }
+            return (category, challenges)
+        }
+    }
+
     private func entryFor(_ challenge: ReadingChallenge) -> ChallengeEntry? {
         allEntries.first(where: { $0.challengeID == challenge.id && $0.userID == currentUserID })
     }
@@ -393,6 +423,58 @@ struct ChallengesView: View {
         Text(text)
             .font(.system(size: 20, weight: .black, design: .rounded))
             .foregroundStyle(.white)
+    }
+
+    private func categoryHeader(
+        category: ChallengeCategory,
+        count: Int
+    ) -> some View {
+        HStack(spacing: 9) {
+            Image(category.iconName)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+                .foregroundStyle(LGradients.header)
+                .frame(width: 34, height: 34)
+                .background(
+                    Circle()
+                        .fill(LColors.glassSurface)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(LGradients.header, lineWidth: 1)
+                        )
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(category.displayName)
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("\(count) challenge\(count == 1 ? "" : "s")")
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundStyle(LColors.textSecondary)
+            }
+
+            Spacer()
+        }
+    }
+
+    private func challengeList(_ challenges: [ReadingChallenge]) -> some View {
+        VStack(spacing: 10) {
+            ForEach(challenges) { challenge in
+                Button {
+                    selectedChallenge = challenge
+                } label: {
+                    ChallengeCardView(
+                        challenge: challenge,
+                        entry: entryFor(challenge),
+                        badgeType: nil
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var featuredBadge: some View {

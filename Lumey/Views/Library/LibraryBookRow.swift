@@ -99,10 +99,10 @@ struct LibraryBookRow: View {
                     LibraryRatingRow(book: book)
                     
                     VStack(alignment: .leading, spacing: 6) {
-                        GradientProgressBar(value: book.calculatedProgress)
+                        GradientProgressBar(value: book.calculatedProgress, isPaused: book.status == .paused)
                             .frame(height: 8)
                         
-                        Text(book.progressText)
+                        Text(progressSummaryText)
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundStyle(LColors.textSecondary)
                     }
@@ -116,20 +116,12 @@ struct LibraryBookRow: View {
         }
     }
 
+    private var progressSummaryText: String {
+        book.status == .paused ? "Paused at \(book.progressText)" : book.progressText
+    }
+
     private func setStatus(_ status: BookStatus) {
-        if status == .finished {
-            book.markFinished()
-        } else {
-            book.status = status
-
-            if status == .reading, book.dateStarted == nil {
-                book.dateStarted = Date()
-            }
-
-            book.isDNF = status == .didNotFinish
-            book.updatedAt = Date()
-            book.lastUpdated = Date()
-        }
+        book.updateStatus(to: status)
 
         try? modelContext.save()
     }
@@ -438,25 +430,39 @@ struct LibrarySeriesDropdownPicker: View {
 
 struct GradientProgressBar: View {
     let value: Double
+    var isPaused: Bool = false
     
     private var clampedValue: Double {
         min(max(value, 0), 1)
+    }
+
+    private var fill: LinearGradient {
+        if isPaused {
+            return LinearGradient(
+                colors: [
+                    Color.white.opacity(0.42),
+                    Color.white.opacity(0.24)
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+
+        return LinearGradient(
+            colors: [LColors.gradientBlue, LColors.gradientPurple],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
     
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.10))
+                    .fill(isPaused ? Color.white.opacity(0.07) : Color.white.opacity(0.10))
                 
                 Capsule(style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [LColors.gradientBlue, LColors.gradientPurple],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .fill(fill)
                     .frame(width: proxy.size.width * clampedValue)
             }
         }

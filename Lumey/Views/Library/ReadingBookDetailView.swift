@@ -329,10 +329,10 @@ struct ReadingBookDetailView: View {
                     LibraryRatingRow(book: book)
                     
                     VStack(alignment: .leading, spacing: 6) {
-                        GradientProgressBar(value: book.calculatedProgress)
+                        GradientProgressBar(value: book.calculatedProgress, isPaused: book.status == .paused)
                             .frame(height: 8)
                         
-                        Text(book.progressText)
+                        Text(progressSummaryText)
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundStyle(LColors.textSecondary)
                     }
@@ -344,6 +344,10 @@ struct ReadingBookDetailView: View {
                 }
             }
         }
+    }
+
+    private var progressSummaryText: String {
+        book.status == .paused ? "Paused at \(book.progressText)" : book.progressText
     }
     
     private var summarySection: some View {

@@ -35,6 +35,7 @@ struct ChallengeSubmissionSheet: View {
     @State private var isSubmitting = false
     @State private var showResult = false
     @State private var resultSubmission: ChallengeSubmission?
+    @State private var visibleSessionCount = 6
 
     private var currentUserID: String {
         appState.currentAppleUserId ?? ""
@@ -250,28 +251,13 @@ struct ChallengeSubmissionSheet: View {
 
     private var sessionPickerSection: some View {
         pickerSection(title: "Link Reading Sessions", icon: "clockfill") {
-            let calendar = Calendar.current
-
-            let startOfWindow = calendar.startOfDay(for: entry.startDate)
-
-            let endOfWindow = calendar.date(
-                bySettingHour: 23,
-                minute: 59,
-                second: 59,
-                of: entry.endDate
-            ) ?? entry.endDate
-
-            let windowSessions = allSessions.filter { session in
-                session.date >= startOfWindow && session.date <= endOfWindow
-            }
-
-            if windowSessions.isEmpty {
-                Text("No sessions found in the challenge window")
+            if allSessions.isEmpty {
+                Text("No reading sessions found")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(LColors.textSecondary)
             }
 
-            ForEach(windowSessions.prefix(30)) { session in
+            ForEach(allSessions.prefix(visibleSessionCount)) { session in
                 let isSelected = selectedSessionIDs.contains(session.id)
                 Button {
                     toggleSelection(id: session.id, in: &selectedSessionIDs)
@@ -299,6 +285,28 @@ struct ChallengeSubmissionSheet: View {
                     .padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
+            }
+
+            if allSessions.count > visibleSessionCount {
+                Button {
+                    visibleSessionCount = min(visibleSessionCount + 6, allSessions.count)
+                } label: {
+                    Text("Load More Sessions")
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(LColors.glassSurface2)
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(LGradients.header, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
             }
         }
     }
@@ -507,7 +515,7 @@ struct ChallengeSubmissionSheet: View {
 
     private func submitEntry() {
         isSubmitting = true
-        
+
         print("===== SUBMIT ENTRY START =====")
         print("Selected Book IDs:", selectedBookIDs)
         print("Selected Session IDs:", selectedSessionIDs)
@@ -557,7 +565,7 @@ struct ChallengeSubmissionSheet: View {
             submissionNote: submissionNote,
             proofSummary: proofSummary
         )
-        
+
         print("SUBMISSION CREATED:")
         print("Submission Linked Session IDs:", submission.linkedSessionIDs)
         print("Submission Proof Summary:", submission.proofSummary)

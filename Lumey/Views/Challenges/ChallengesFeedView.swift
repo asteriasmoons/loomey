@@ -36,6 +36,7 @@ struct ChallengesFeedView: View {
     @State private var feedErrorMessage: String?
     @State private var showingCreatePostSheet = false
     @State private var selectedFeedItemForComments: ChallengeFeedItemDTO?
+    @State private var selectedChallengeProfile: ChallengeUserProfile?
     @State private var showingAnnouncementComposer = false
     @State private var announcementTitle = ""
     @State private var announcementBody = ""
@@ -55,7 +56,7 @@ struct ChallengesFeedView: View {
     private var currentProfile: ChallengeUserProfile? {
         profiles.first(where: { $0.userID == currentUserID })
     }
-    
+
     private var feedItems: [ChallengeFeedItemDTO] {
         feedResponse?.feedItems ?? []
     }
@@ -91,7 +92,7 @@ struct ChallengesFeedView: View {
     private var isAdmin: Bool {
         currentUserID == VoxAdmin.adminUserID
     }
-    
+
     private func bookTitle(for id: String?) -> String? {
         guard let id,
               let uuid = UUID(uuidString: id) else {
@@ -203,6 +204,17 @@ struct ChallengesFeedView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
         }
+        .adaptivePresentation(item: $selectedChallengeProfile, useFullScreenCover: horizontalSizeClass == .regular) { profile in
+            ProfileView(
+                challengeProfile: profile,
+                recentChallengeSubmissions: submissions.filter {
+                    $0.userID == profile.userID
+                },
+                showsCloseButton: true
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+        }
         .adaptivePresentation(isPresented: $showingAnnouncementIconPicker, useFullScreenCover: horizontalSizeClass == .regular) {
             AnnouncementIconInsertPicker { iconName in
                 announcementBody.append("{{" + iconName + "}}")
@@ -269,13 +281,13 @@ struct ChallengesFeedView: View {
                         .scaledToFit()
                         .frame(width: 20, height: 20)
                         .foregroundStyle(LGradients.header)
-                    
+
                     Text("Post Announcement")
                         .font(.system(size: 16, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
-                    
+
                     Spacer()
-                    
+
                     Button {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
                             isAnnouncementComposerCollapsed.toggle()
@@ -299,7 +311,7 @@ struct ChallengesFeedView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                
+
                 if !isAnnouncementComposerCollapsed {
                     TextField("Title", text: $announcementTitle)
                         .font(.system(size: 14, weight: .bold, design: .rounded))
@@ -313,7 +325,7 @@ struct ChallengesFeedView: View {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .strokeBorder(LColors.glassBorder, lineWidth: 1)
                         )
-                    
+
                     FormattingTextEditor(
                         text: $announcementBody,
                         placeholder: "Body",
@@ -332,7 +344,7 @@ struct ChallengesFeedView: View {
                             .strokeBorder(LColors.glassBorder, lineWidth: 1)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    
+
                     Button {
                         Task { await postAnnouncement() }
                     } label: {
@@ -461,7 +473,7 @@ struct ChallengesFeedView: View {
                     selectedFeedItemForComments = feedItem
                 },
                 onProfileTapped: {
-                    // Profile navigation can be added later.
+                    selectChallengeProfile(for: feedItem)
                 },
                 onDeleteTapped: {
                     Task {
@@ -488,7 +500,7 @@ struct ChallengesFeedView: View {
                         selectedFeedItemForComments = feedItem
                     },
                     onProfileTapped: {
-                        // Profile navigation can be added later.
+                        selectChallengeProfile(for: feedItem)
                     }
                 )
             }
@@ -557,7 +569,7 @@ struct ChallengesFeedView: View {
             feedErrorMessage = error.localizedDescription
         }
     }
-    
+
     @MainActor
     private func deleteFeedPost(_ feedItem: ChallengeFeedItemDTO) async {
         guard let feedItemID = feedItem.id else { return }
@@ -570,7 +582,7 @@ struct ChallengesFeedView: View {
             feedErrorMessage = error.localizedDescription
         }
     }
-    
+
     @MainActor
     private func deleteAnnouncement(_ announcement: ChallengeFeedAnnouncementDTO) async {
         guard let announcementID = announcement.id else { return }
@@ -585,7 +597,7 @@ struct ChallengesFeedView: View {
             feedErrorMessage = error.localizedDescription
         }
     }
-    
+
     @MainActor
     private func removeFeedItem(_ feedItemID: String) {
         guard var response = feedResponse else { return }
@@ -596,7 +608,7 @@ struct ChallengesFeedView: View {
 
         feedResponse = response
     }
-    
+
     @MainActor
     private func removeAnnouncement(_ announcementID: String) {
         guard var response = feedResponse else { return }
@@ -861,10 +873,80 @@ struct ChallengesFeedView: View {
         return feedComments.filter { $0.feedItemID == feedItemID }
     }
 
+    @MainActor
+    private func selectChallengeProfile(for feedItem: ChallengeFeedItemDTO) {
+        let dto = profileDTO(for: feedItem)
+
+        if let existing = profiles.first(where: { $0.userID == feedItem.userID }) {
+            syncChallengeProfile(existing, with: dto, fallbackUsername: feedItem.username)
+            selectedChallengeProfile = existing
+            return
+        }
+
+        let username = dto?.username.trimmingCharacters(in: .whitespacesAndNewlines) ?? feedItem.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let profile = ChallengeUserProfile(
+            userID: feedItem.userID,
+            username: username.isEmpty ? "Reader" : username,
+            avatarName: cleaned(dto?.avatarName),
+            avatarImageData: nil,
+            avatarURL: cleaned(dto?.avatarURL),
+            bio: cleaned(dto?.bio),
+            favoriteGenre: cleaned(dto?.favoriteGenre)
+        )
+
+        if let dto {
+            profile.readingStreak = dto.readingStreak
+            profile.challengePoints = dto.challengePoints
+            profile.challengesCompleted = dto.challengesCompleted
+            profile.followersCount = dto.followersCount
+            profile.followingCount = dto.followingCount
+        }
+
+        modelContext.insert(profile)
+        try? modelContext.save()
+
+        selectedChallengeProfile = profile
+    }
+
+    private func syncChallengeProfile(
+        _ profile: ChallengeUserProfile,
+        with dto: ChallengeUserProfileDTO?,
+        fallbackUsername: String
+    ) {
+        let fallbackUsername = fallbackUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let dto else {
+            if profile.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                profile.username = fallbackUsername.isEmpty ? "Reader" : fallbackUsername
+            }
+            try? modelContext.save()
+            return
+        }
+
+        let username = dto.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.username = username.isEmpty ? (fallbackUsername.isEmpty ? "Reader" : fallbackUsername) : username
+        profile.avatarName = cleaned(dto.avatarName)
+        profile.avatarURL = cleaned(dto.avatarURL)
+        profile.bio = cleaned(dto.bio)
+        profile.favoriteGenre = cleaned(dto.favoriteGenre)
+        profile.readingStreak = dto.readingStreak
+        profile.challengePoints = dto.challengePoints
+        profile.challengesCompleted = dto.challengesCompleted
+        profile.followersCount = dto.followersCount
+        profile.followingCount = dto.followingCount
+
+        try? modelContext.save()
+    }
+
+    private func cleaned(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private func profileDTO(for feedItem: ChallengeFeedItemDTO) -> ChallengeUserProfileDTO? {
         feedProfiles.first { $0.userID == feedItem.userID }
     }
-    
+
     private func profileDTO(forUserID userID: String) -> ChallengeUserProfileDTO? {
         feedProfiles.first { $0.userID == userID }
     }
@@ -1192,7 +1274,7 @@ private struct InlineChallengeFeedPostComposer: View {
 
         isPosting = false
     }
-    
+
     private struct WrappingHStack: Layout {
         var horizontalSpacing: CGFloat = 8
         var verticalSpacing: CGFloat = 8

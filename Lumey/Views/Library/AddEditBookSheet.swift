@@ -351,6 +351,7 @@ struct AddEditBookSheet: View {
 
     private func saveBook() {
         let targetBook = book ?? Book()
+        let previousStatus = targetBook.status
         targetBook.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         targetBook.author = author.trimmingCharacters(in: .whitespacesAndNewlines)
         targetBook.subtitle = subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -361,7 +362,6 @@ struct AddEditBookSheet: View {
         targetBook.isbn = isbn.trimmingCharacters(in: .whitespacesAndNewlines)
         targetBook.summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         targetBook.rating = rating
-        targetBook.status = status
         targetBook.format = format
         targetBook.ownership = ownership
         targetBook.currentPage = Int(currentPage) ?? 0
@@ -385,6 +385,12 @@ struct AddEditBookSheet: View {
         // Auto-convert ebook page to physical if both totals are set
         if targetBook.ebookTotalPages > 0 && targetBook.totalPages > 0 {
             targetBook.currentPage = targetBook.convertedPhysicalPage(from: targetBook.ebookCurrentPage)
+        }
+
+        if previousStatus == status {
+            targetBook.status = status
+        } else {
+            targetBook.updateStatus(to: status)
         }
         
         onSave(targetBook)

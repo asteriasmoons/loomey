@@ -68,32 +68,31 @@ final class ChallengeValidationEngine {
         sessions: [ReadingSession]
     ) -> ChallengeValidationResult {
 
-        // Filter sessions within challenge window
-        let windowSessions = sessionsInChallengeWindow(sessions, entry: entry)
+        let linkedSessions = sessions
 
         if let requiredCount = challenge.requiredSessionCount,
-           windowSessions.count < requiredCount {
+           linkedSessions.count < requiredCount {
 
-            if windowSessions.isEmpty {
+            if linkedSessions.isEmpty {
                 return .needsMoreInfo(
-                    "No qualifying reading sessions were found during this challenge window."
+                    "No qualifying reading sessions were linked to this submission."
                 )
             }
 
             return .inProgress(
-                "You've logged \(windowSessions.count) of \(requiredCount) required reading sessions during this challenge window."
+                "You've linked \(linkedSessions.count) of \(requiredCount) required reading sessions."
             )
         }
 
         if let requiredMinutes = challenge.requiredSessionMinutes {
-            let qualifying = windowSessions.filter { $0.durationMinutes >= requiredMinutes }
+            let qualifying = linkedSessions.filter { $0.durationMinutes >= requiredMinutes }
             if qualifying.isEmpty {
-                return .needsMoreInfo("No sessions found lasting at least \(requiredMinutes) minutes. Your longest session was \(windowSessions.map(\.durationMinutes).max() ?? 0) minutes.")
+                return .needsMoreInfo("No sessions found lasting at least \(requiredMinutes) minutes. Your longest linked session was \(linkedSessions.map(\.durationMinutes).max() ?? 0) minutes.")
             }
         }
 
         if let requiredStreak = challenge.requiredDaysStreak {
-            let uniqueDays = Set(windowSessions.map { Calendar.current.startOfDay(for: $0.date) }).sorted()
+            let uniqueDays = Set(linkedSessions.map { Calendar.current.startOfDay(for: $0.date) }).sorted()
             let streakLength = longestConsecutiveStreak(dates: uniqueDays)
             if streakLength < requiredStreak {
                 return .needsMoreInfo("You've read on \(uniqueDays.count) unique days, but need a streak of \(requiredStreak) consecutive days. Your best streak was \(streakLength) days.")
@@ -112,8 +111,7 @@ final class ChallengeValidationEngine {
         books: [Book]
     ) -> ChallengeValidationResult {
 
-        let windowSessions = sessionsInChallengeWindow(sessions, entry: entry)
-        let totalPages = windowSessions.reduce(0) { $0 + $1.pagesRead }
+        let totalPages = sessions.reduce(0) { $0 + $1.pagesRead }
 
         guard let requiredPages = challenge.requiredPageCount else {
             return .approved("Page count validated.")
@@ -123,12 +121,12 @@ final class ChallengeValidationEngine {
 
             if totalPages == 0 {
                 return .needsMoreInfo(
-                    "No pages were found during the challenge window."
+                    "No pages were found in the linked reading sessions."
                 )
             }
 
             return .inProgress(
-                "You've read \(totalPages) of \(requiredPages) required pages during the challenge window."
+                "You've linked \(totalPages) of \(requiredPages) required pages."
             )
         }
 
@@ -479,19 +477,19 @@ final class ChallengeValidationEngine {
         submission: ChallengeSubmission
     ) -> ChallengeValidationResult {
 
-        let windowSessions = sessionsInChallengeWindow(sessions, entry: entry)
+        let linkedSessions = sessions
 
         if let requiredCount = challenge.requiredSessionCount,
-           windowSessions.count < requiredCount {
+           linkedSessions.count < requiredCount {
 
-            if windowSessions.isEmpty {
+            if linkedSessions.isEmpty {
                 return .needsMoreInfo(
                     "No qualifying reading sessions were found."
                 )
             }
 
             return .inProgress(
-                "You've logged \(windowSessions.count) of \(requiredCount) required reading sessions."
+                "You've linked \(linkedSessions.count) of \(requiredCount) required reading sessions."
             )
         }
 
@@ -535,26 +533,6 @@ final class ChallengeValidationEngine {
         return allLists.filter { ids.contains($0.id) }
     }
     
-    private func sessionsInChallengeWindow(
-        _ sessions: [ReadingSession],
-        entry: ChallengeEntry
-    ) -> [ReadingSession] {
-        let calendar = Calendar.current
-
-        let start = calendar.startOfDay(for: entry.startDate)
-
-        let end = calendar.date(
-            bySettingHour: 23,
-            minute: 59,
-            second: 59,
-            of: entry.endDate
-        ) ?? entry.endDate
-
-        return sessions.filter {
-            $0.date >= start && $0.date <= end
-        }
-    }
-
     // MARK: - Streak Helper
 
     private func longestConsecutiveStreak(dates: [Date]) -> Int {

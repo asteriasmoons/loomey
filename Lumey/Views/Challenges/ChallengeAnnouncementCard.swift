@@ -100,8 +100,8 @@ struct ChallengeAnnouncementCard: View {
                     UserAvatarView(
                         avatarURL: resolvedAuthorAvatarURL,
                         avatarName: resolvedAuthorAvatarName,
-                        size: 16,
-                        iconSize: 10
+                        size: 32,
+                        iconSize: 18
                     )
 
                     Text(announcement.username)

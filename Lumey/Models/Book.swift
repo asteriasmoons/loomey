@@ -367,27 +367,58 @@ extension Book {
         }
         
         if status == .toBeRead {
-            status = .reading
-            dateStarted = Date()
+            markStarted()
         }
         
         if calculatedProgress >= 1 {
-            status = .finished
-            dateFinished = Date()
+            markFinished()
         }
         
         lastUpdated = Date()
     }
+
+    func updateStatus(to newStatus: BookStatus) {
+        switch newStatus {
+        case .toBeRead:
+            status = .toBeRead
+            isDNF = false
+            dateFinished = nil
+            touch()
+        case .reading:
+            markStarted()
+        case .finished:
+            markFinished()
+        case .paused:
+            markPaused()
+        case .didNotFinish:
+            markDNF()
+        }
+    }
     
     func markStarted() {
         status = .reading
-        dateStarted = Date()
-        lastUpdated = Date()
+        if dateStarted == nil {
+            dateStarted = Date()
+        }
+        dateFinished = nil
+        isDNF = false
+        touch()
+    }
+
+    func markPaused() {
+        status = .paused
+        if dateStarted == nil {
+            dateStarted = Date()
+        }
+        dateFinished = nil
+        isDNF = false
+        touch()
     }
     
     func markFinished() {
         status = .finished
         dateFinished = Date()
+        isDNF = false
         progressPercent = 100
         
         if totalPages > 0 {
@@ -402,13 +433,20 @@ extension Book {
             ebookCurrentPage = ebookTotalPages
         }
         
-        lastUpdated = Date()
+        touch()
     }
     
     func markDNF() {
         status = .didNotFinish
         isDNF = true
-        lastUpdated = Date()
+        dateFinished = nil
+        touch()
+    }
+
+    private func touch() {
+        let now = Date()
+        updatedAt = now
+        lastUpdated = now
     }
     
     private func decodeStringArray(from storage: String) -> [String] {
