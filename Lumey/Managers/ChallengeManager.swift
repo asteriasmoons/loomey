@@ -367,7 +367,7 @@ final class ChallengeManager: ObservableObject {
 
     func fetchFeaturedChallenge() -> ReadingChallenge? {
         let all = fetchAllChallenges()
-        return all.first(where: { $0.isFeatured })
+        return ReadingChallenge.rotatingFeaturedChallenge(from: all)
     }
 
     func fetchWeeklyChallenges() -> [ReadingChallenge] {

@@ -365,7 +365,7 @@ struct ChallengesView: View {
     // MARK: - Helpers
 
     private var featuredChallenge: ReadingChallenge? {
-        allChallenges.first(where: { $0.isFeatured })
+        ReadingChallenge.rotatingFeaturedChallenge(from: allChallenges)
     }
 
     private var weeklyChallenges: [ReadingChallenge] {

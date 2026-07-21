@@ -17,9 +17,9 @@ struct ReadingGoalsView: View {
     @Query(sort: \Book.lastUpdated, order: .reverse)
     private var books: [Book]
 
-    @Query(sort: \ReadingStats.updatedAt, order: .reverse)
-    private var stats: [ReadingStats]
-    
+    @Query(sort: \ReadingSession.date, order: .reverse)
+    private var sessions: [ReadingSession]
+
     @Query(
         sort: \ReadingAchievement.sortOrder
     )
@@ -54,10 +54,6 @@ struct ReadingGoalsView: View {
         pinnedGoals.first ?? activeGoals.first
     }
 
-    private var readingStats: ReadingStats? {
-        ReadingStats.preferredRecord(from: stats)
-    }
-    
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
@@ -124,6 +120,12 @@ struct ReadingGoalsView: View {
             }
             .onAppear {
                 resetRecurringGoalsIfNeeded()
+                ReadingAchievementManager.updateAchievements(modelContext: modelContext)
+            }
+            .onChange(of: books.map(\.lastUpdated)) {
+                ReadingAchievementManager.updateAchievements(modelContext: modelContext)
+            }
+            .onChange(of: sessions.map(\.date)) {
                 ReadingAchievementManager.updateAchievements(modelContext: modelContext)
             }
         }
@@ -303,7 +305,7 @@ private extension ReadingGoalsView {
             activeCount: activeGoals.count,
             completedCount: completedGoals.count,
             totalBooksCount: books.filter { !$0.isArchived }.count,
-            totalSessionsCount: readingStats?.totalReadingSessions ?? 0,
+            totalSessionsCount: sessions.count,
             onAddGoal: {
                 showingAddGoalSheet = true
             }

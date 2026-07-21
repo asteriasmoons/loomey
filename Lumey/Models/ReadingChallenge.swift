@@ -207,6 +207,34 @@ extension ReadingChallenge {
         cycle(containing: date, calendar: calendar)
     }
 
+    static func rotatingFeaturedChallenge(
+        from challenges: [ReadingChallenge],
+        date: Date = Date(),
+        calendar: Calendar = .current
+    ) -> ReadingChallenge? {
+        let pool = challenges.sorted { lhs, rhs in
+            if lhs.category != rhs.category {
+                return lhs.category.rawValue.localizedCaseInsensitiveCompare(rhs.category.rawValue) == .orderedAscending
+            }
+
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+
+        guard !pool.isEmpty else { return nil }
+
+        let day = calendar.ordinality(of: .day, in: .era, for: date) ?? 0
+        let startIndex = day % pool.count
+
+        for offset in 0..<pool.count {
+            let candidate = pool[(startIndex + offset) % pool.count]
+            if !candidate.isFeatured {
+                return candidate
+            }
+        }
+
+        return pool[startIndex]
+    }
+
     private func nextCycleEnd(after start: Date, calendar: Calendar) -> Date {
         switch recurrence {
         case .daily:

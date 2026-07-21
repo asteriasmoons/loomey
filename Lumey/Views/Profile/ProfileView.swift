@@ -132,7 +132,7 @@ struct ProfileView: View {
     }
 
     private var readingDNABooks: [Book] {
-        books.filter { !$0.isArchived && $0.deletedAt == nil }
+        books.filter { !$0.isArchived }
     }
 
     private var finishedBooks: [Book] {
@@ -224,11 +224,9 @@ struct ProfileView: View {
 
     private var yearlyBooks: [Book] {
         readingDNABooks.filter { book in
-            guard book.status == .finished,
-                  let finishedDate = book.dateFinished
-            else { return false }
+            guard book.status == .finished else { return false }
 
-            return Calendar.current.component(.year, from: finishedDate) == currentYear
+            return Calendar.current.component(.year, from: finishedReferenceDate(for: book)) == currentYear
         }
     }
 
@@ -243,9 +241,9 @@ struct ProfileView: View {
     }
 
     private var yearlyPagesRead: String {
-        let sessionPages = yearlySessions.reduce(0) { $0 + $1.pagesRead }
-        let finishedBookPages = yearlyBooks.reduce(0) { $0 + $1.totalPages }
-        let pages = max(sessionPages, finishedBookPages)
+        let pages = yearlyBooks.reduce(0) { total, book in
+            total + finishedPageCount(for: book)
+        }
         return "\(pages)"
     }
 
@@ -260,7 +258,7 @@ struct ProfileView: View {
     }
 
     private var yearlyLongestStreak: String {
-        "\(stats?.bestReadingStreak ?? 0) days"
+        "\(longestReadingStreak(from: yearlySessions)) days"
     }
 
     private var yearlyHighestRated: String {
@@ -318,6 +316,113 @@ struct ProfileView: View {
         }
 
         return "\(fastest.0.displayTitle) • \(fastest.1) day\(fastest.1 == 1 ? "" : "s")"
+    }
+
+    private var actualCurrentReadingStreak: Int {
+        if let stats, stats.isOnReadingBreak {
+            if stats.currentBreakDays > ReadingStats.maxBreakDays { return 0 }
+            return stats.readingBreakStreakValue
+        }
+
+        let calendar = Calendar.current
+        let readingDays = Set(sessions.map { calendar.startOfDay(for: $0.date) })
+        guard !readingDays.isEmpty else { return 0 }
+
+        let today = calendar.startOfDay(for: Date())
+        let breakPeriods = stats?.breakPeriods ?? []
+
+        var anchorDay: Date?
+        var checkDay = today
+        var graceDaysUsed = 0
+
+        while graceDaysUsed <= 1 {
+            if readingDays.contains(checkDay) {
+                anchorDay = checkDay
+                break
+            }
+
+            if ReadingStats.isDateInBreakPeriod(checkDay, periods: breakPeriods),
+               let previous = calendar.date(byAdding: .day, value: -1, to: checkDay) {
+                checkDay = previous
+                continue
+            }
+
+            graceDaysUsed += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: checkDay) else {
+                break
+            }
+            checkDay = previous
+        }
+
+        guard let anchorDay else { return 0 }
+
+        var streak = 0
+        var day = anchorDay
+
+        for _ in 0..<3650 {
+            if readingDays.contains(day) {
+                streak += 1
+                guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+                day = previous
+            } else if ReadingStats.isDateInBreakPeriod(day, periods: breakPeriods),
+                      let previous = calendar.date(byAdding: .day, value: -1, to: day) {
+                day = previous
+            } else {
+                break
+            }
+        }
+
+        return streak
+    }
+
+    private func finishedPageCount(for book: Book) -> Int {
+        max(book.totalPages, book.currentPage, book.ebookTotalPages)
+    }
+
+    private func finishedReferenceDate(for book: Book) -> Date {
+        book.dateFinished ?? book.lastUpdated
+    }
+
+    private func longestReadingStreak(from sessions: [ReadingSession]) -> Int {
+        let calendar = Calendar.current
+        let sortedDays = Array(Set(sessions.map { calendar.startOfDay(for: $0.date) })).sorted()
+        guard !sortedDays.isEmpty else { return 0 }
+
+        let breakPeriods = stats?.breakPeriods ?? []
+        var best = 1
+        var current = 1
+
+        for index in 1..<sortedDays.count {
+            let previous = sortedDays[index - 1]
+            let currentDay = sortedDays[index]
+            let dayAfterPrevious = calendar.date(byAdding: .day, value: 1, to: previous) ?? previous
+
+            if calendar.isDate(currentDay, inSameDayAs: dayAfterPrevious) {
+                current += 1
+            } else {
+                var gapDay = dayAfterPrevious
+                var gapBridged = true
+
+                while gapDay < currentDay {
+                    if !ReadingStats.isDateInBreakPeriod(gapDay, periods: breakPeriods) {
+                        gapBridged = false
+                        break
+                    }
+
+                    guard let next = calendar.date(byAdding: .day, value: 1, to: gapDay) else {
+                        gapBridged = false
+                        break
+                    }
+                    gapDay = next
+                }
+
+                current = gapBridged ? current + 1 : 1
+            }
+
+            best = max(best, current)
+        }
+
+        return best
     }
 
     private var readingDNAObservations: [String] {
@@ -797,8 +902,8 @@ struct ProfileView: View {
             challengeStatCard(
                 icon: "loveflame",
                 title: "Streak",
-                value: "\(profile.readingStreak)",
-                subtitle: profile.readingStreak == 1 ? "Day" : "Days"
+                value: "\(displayedReadingStreak(for: profile))",
+                subtitle: displayedReadingStreak(for: profile) == 1 ? "Day" : "Days"
             )
 
             challengeStatCard(
@@ -850,6 +955,10 @@ struct ProfileView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private func displayedReadingStreak(for profile: ChallengeUserProfile) -> Int {
+        profile.userID == currentUserID ? actualCurrentReadingStreak : profile.readingStreak
     }
 
     private func currentChallengeCard(_ title: String) -> some View {

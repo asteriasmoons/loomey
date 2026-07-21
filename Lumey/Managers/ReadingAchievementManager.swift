@@ -46,20 +46,18 @@ enum ReadingAchievementManager {
 
         let achievements = fetchAchievements(modelContext: modelContext)
         let books = fetchBooks(modelContext: modelContext)
-        let stats = fetchStats(modelContext: modelContext)
+        let sessions = fetchSessions(modelContext: modelContext)
         let reviews = fetchReviews(modelContext: modelContext)
         let notes = fetchNotes(modelContext: modelContext)
         let quotes = fetchQuotes(modelContext: modelContext)
 
-        let stat = ReadingStats.preferredRecord(from: stats)
-
         let values = AchievementValues(
-            pagesRead: stat?.totalPagesRead ?? calculatePagesRead(from: books),
-            booksFinished: stat?.totalBooksFinished ?? calculateFinishedBooks(from: books),
+            pagesRead: calculatePagesRead(from: books),
+            booksFinished: calculateFinishedBooks(from: books),
             reviewsWritten: reviews.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count,
             quotesSaved: quotes.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count,
             notesWritten: notes.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count,
-            readingStreak: stat?.currentReadingStreak ?? 0,
+            readingStreak: calculateLongestReadingStreak(from: sessions),
             seriesFinished: calculateFinishedSeries(books: books)
         )
 
@@ -92,13 +90,13 @@ enum ReadingAchievementManager {
         return (try? modelContext.fetch(descriptor)) ?? []
     }
 
-    private static func fetchStats(modelContext: ModelContext) -> [ReadingStats] {
-        let descriptor = FetchDescriptor<ReadingStats>()
+    private static func fetchReviews(modelContext: ModelContext) -> [BookReview] {
+        let descriptor = FetchDescriptor<BookReview>()
         return (try? modelContext.fetch(descriptor)) ?? []
     }
 
-    private static func fetchReviews(modelContext: ModelContext) -> [BookReview] {
-        let descriptor = FetchDescriptor<BookReview>()
+    private static func fetchSessions(modelContext: ModelContext) -> [ReadingSession] {
+        let descriptor = FetchDescriptor<ReadingSession>()
         return (try? modelContext.fetch(descriptor)) ?? []
     }
 
@@ -119,7 +117,7 @@ enum ReadingAchievementManager {
             .filter { !$0.isArchived }
             .reduce(0) { total, book in
                 if book.status == .finished, book.totalPages > 0 {
-                    return total + book.totalPages
+                    return total + max(book.totalPages, book.currentPage, book.ebookTotalPages)
                 }
 
                 return total + max(book.currentPage, 0)
@@ -131,6 +129,31 @@ enum ReadingAchievementManager {
             .filter { !$0.isArchived }
             .filter { $0.status == .finished }
             .count
+    }
+
+    private static func calculateLongestReadingStreak(from sessions: [ReadingSession]) -> Int {
+        let calendar = Calendar.current
+        let sortedDays = Array(Set(sessions.map { calendar.startOfDay(for: $0.date) })).sorted()
+        guard !sortedDays.isEmpty else { return 0 }
+
+        var best = 1
+        var current = 1
+
+        for index in 1..<sortedDays.count {
+            let previous = sortedDays[index - 1]
+            let currentDay = sortedDays[index]
+            let expectedNextDay = calendar.date(byAdding: .day, value: 1, to: previous) ?? previous
+
+            if calendar.isDate(currentDay, inSameDayAs: expectedNextDay) {
+                current += 1
+            } else {
+                current = 1
+            }
+
+            best = max(best, current)
+        }
+
+        return best
     }
 
     private static func calculateFinishedSeries(books: [Book]) -> Int {
