@@ -137,20 +137,15 @@ final class ChallengeValidationEngine {
 
     private func validateBookCompletion(
         challenge: ReadingChallenge,
-        entry: ChallengeEntry,
+        entry _: ChallengeEntry,
         books: [Book]
     ) -> ChallengeValidationResult {
 
-        let finishedBooks = books.filter { book in
-            book.status == .finished &&
-            book.dateFinished != nil &&
-            book.dateFinished! >= entry.startDate &&
-            book.dateFinished! <= entry.endDate
-        }
+        let finishedBooks = books.filter { $0.status == .finished }
 
         guard let requiredCount = challenge.requiredBookCount else {
             if finishedBooks.isEmpty {
-                return .needsMoreInfo("No finished books found during the challenge window.")
+                return .needsMoreInfo("No finished books were linked to this submission.")
             }
             return .approved("Book completion validated.")
         }
@@ -159,32 +154,27 @@ final class ChallengeValidationEngine {
 
             if finishedBooks.isEmpty {
                 return .needsMoreInfo(
-                    "No finished books were found during the challenge window."
+                    "No finished books were linked to this submission."
                 )
             }
 
             return .inProgress(
-                "You've finished \(finishedBooks.count) of \(requiredCount) required books during the challenge window."
+                "You've linked \(finishedBooks.count) of \(requiredCount) required finished books."
             )
         }
 
-        return .approved("Incredible! You finished \(finishedBooks.count) books during this challenge.")
+        return .approved("Incredible! You linked \(finishedBooks.count) finished books.")
     }
 
     // MARK: - Validation: Genre
 
     private func validateGenre(
         challenge: ReadingChallenge,
-        entry: ChallengeEntry,
+        entry _: ChallengeEntry,
         books: [Book]
     ) -> ChallengeValidationResult {
 
-        let finishedBooks = books.filter { book in
-            book.status == .finished &&
-            book.dateFinished != nil &&
-            book.dateFinished! >= entry.startDate &&
-            book.dateFinished! <= entry.endDate
-        }
+        let finishedBooks = books.filter { $0.status == .finished }
 
         guard let requiredCount = challenge.requiredBookCount, !finishedBooks.isEmpty else {
             return .needsMoreInfo("No finished books linked to this submission.")
@@ -220,27 +210,25 @@ final class ChallengeValidationEngine {
 
     private func validateReview(
         challenge: ReadingChallenge,
-        entry: ChallengeEntry,
+        entry _: ChallengeEntry,
         reviews: [BookReview],
         submission: ChallengeSubmission
     ) -> ChallengeValidationResult {
 
-        let windowReviews = reviews.filter { $0.dateCreated >= entry.startDate && $0.dateCreated <= entry.endDate }
-
         guard let requiredCount = challenge.requiredReviewCount else {
-            if windowReviews.isEmpty {
-                return .needsMoreInfo("No reviews found during the challenge window.")
+            if reviews.isEmpty {
+                return .needsMoreInfo("No reviews were linked to this submission.")
             }
             return .approved("Review validated.")
         }
 
-        if windowReviews.count < requiredCount {
-            return .needsMoreInfo("You've written \(windowReviews.count) of \(requiredCount) required reviews during the challenge window.")
+        if reviews.count < requiredCount {
+            return .needsMoreInfo("You've linked \(reviews.count) of \(requiredCount) required reviews.")
         }
 
         // Check word count if required
         if let requiredWords = challenge.requiredWordCount {
-            let qualifying = windowReviews.filter { review in
+            let qualifying = reviews.filter { review in
                 let wordCount = review.content.split(separator: " ").count
                 return wordCount >= requiredWords
             }
@@ -368,24 +356,19 @@ final class ChallengeValidationEngine {
 
     private func validateSeasonalTheme(
         challenge: ReadingChallenge,
-        entry: ChallengeEntry,
+        entry _: ChallengeEntry,
         books: [Book],
         submission: ChallengeSubmission
     ) -> ChallengeValidationResult {
 
-        let finishedBooks = books.filter { book in
-            book.status == .finished &&
-            book.dateFinished != nil &&
-            book.dateFinished! >= entry.startDate &&
-            book.dateFinished! <= entry.endDate
-        }
+        let finishedBooks = books.filter { $0.status == .finished }
 
         guard let requiredCount = challenge.requiredBookCount else {
             return .needsMoreInfo("No book count requirement specified.")
         }
 
         if finishedBooks.count < requiredCount {
-            return .needsMoreInfo("You've finished \(finishedBooks.count) of \(requiredCount) required books during the challenge window.")
+            return .needsMoreInfo("You've linked \(finishedBooks.count) of \(requiredCount) required finished books.")
         }
 
         // Always defer to AI for theme validation

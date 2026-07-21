@@ -38,7 +38,10 @@ struct ChallengeSubmissionSheet: View {
     @State private var isSubmitting = false
     @State private var showResult = false
     @State private var resultSubmission: ChallengeSubmission?
+    @State private var bookPageIndex = 0
     @State private var visibleSessionCount = 6
+
+    private let bookPageSize = 8
 
     private var currentUserID: String {
         appState.currentAppleUserId ?? ""
@@ -249,14 +252,24 @@ struct ChallengeSubmissionSheet: View {
     private var bookPickerSection: some View {
         pickerSection(title: "Link Books", icon: "flatbook") {
             let eligible = allBooks.filter { !$0.isArchived }
+            let pageCount = max(1, (eligible.count + bookPageSize - 1) / bookPageSize)
+            let clampedPageIndex = min(bookPageIndex, pageCount - 1)
+            let startIndex = clampedPageIndex * bookPageSize
+            let visibleBooks = Array(eligible.dropFirst(startIndex).prefix(bookPageSize))
 
-            if selectedBookIDs.isEmpty {
+            if selectedBookIDs.isEmpty && !eligible.isEmpty {
                 Text("Tap to select books")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(LColors.textSecondary)
             }
 
-            ForEach(eligible.prefix(50)) { book in
+            if eligible.isEmpty {
+                Text("No books found")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(LColors.textSecondary)
+            }
+
+            ForEach(visibleBooks) { book in
                 let isSelected = selectedBookIDs.contains(book.id)
                 Button {
                     toggleSelection(id: book.id, in: &selectedBookIDs)
@@ -286,7 +299,64 @@ struct ChallengeSubmissionSheet: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            if eligible.count > bookPageSize {
+                bookPaginationControls(
+                    pageIndex: clampedPageIndex,
+                    pageCount: pageCount
+                )
+            }
         }
+    }
+
+    private func bookPaginationControls(pageIndex: Int, pageCount: Int) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                bookPageIndex = max(pageIndex - 1, 0)
+            } label: {
+                paginationIcon("chevleft", isEnabled: pageIndex > 0)
+            }
+            .buttonStyle(.plain)
+            .disabled(pageIndex == 0)
+
+            Spacer()
+
+            Text("Page \(pageIndex + 1) of \(pageCount)")
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .foregroundStyle(LColors.textSecondary)
+
+            Spacer()
+
+            Button {
+                bookPageIndex = min(pageIndex + 1, pageCount - 1)
+            } label: {
+                paginationIcon("chevright", isEnabled: pageIndex < pageCount - 1)
+            }
+            .buttonStyle(.plain)
+            .disabled(pageIndex >= pageCount - 1)
+        }
+        .padding(.top, 6)
+    }
+
+    private func paginationIcon(_ assetName: String, isEnabled: Bool) -> some View {
+        Image(assetName)
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 15, height: 15)
+            .foregroundStyle(isEnabled ? AnyShapeStyle(.white) : AnyShapeStyle(LColors.textSecondary.opacity(0.55)))
+            .frame(width: 34, height: 34)
+            .background(
+                Circle()
+                    .fill(LColors.glassSurface2)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(
+                                isEnabled ? AnyShapeStyle(LGradients.header) : AnyShapeStyle(LColors.glassBorder),
+                                lineWidth: 1
+                            )
+                    )
+            )
     }
 
     // MARK: - Session Picker
