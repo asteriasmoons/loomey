@@ -199,12 +199,12 @@ struct ChallengeSubmissionResultView: View {
             VStack(alignment: .leading, spacing: 10) {
                 sectionHeader(icon: "checkwavy", title: "Submitted Proof")
 
-                if submission.proofSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if displayProofSummary.isEmpty {
                     Text("No proof summary was saved for this submission.")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(LColors.textSecondary)
                 } else {
-                    Text(submission.proofSummary)
+                    Text(displayProofSummary)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(LColors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -357,5 +357,13 @@ struct ChallengeSubmissionResultView: View {
         case .expired:
             return "Close"
         }
+    }
+
+    private var displayProofSummary: String {
+        let trimmed = submission.proofSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        guard !trimmed.contains("\n") else { return trimmed }
+
+        return trimmed.replacingOccurrences(of: ", ", with: "\n")
     }
 }

@@ -89,8 +89,8 @@ struct ChallengeCommentsSheet: View {
 
     private var displayText: String {
         let postText = post?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !postText.isEmpty { return postText }
-        return feedItem.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !postText.isEmpty { return formattedFeedText(postText) }
+        return formattedFeedText(feedItem.text)
     }
 
     private var displayPhotoURL: String {
@@ -103,6 +103,14 @@ struct ChallengeCommentsSheet: View {
         let p = post?.photoBase64?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !p.isEmpty { return p }
         return feedItem.photoBase64?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func formattedFeedText(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard feedItem.feedType == "submission" else { return trimmed }
+        guard !trimmed.contains("\n") else { return trimmed }
+
+        return trimmed.replacingOccurrences(of: ", ", with: "\n")
     }
 
     var body: some View {

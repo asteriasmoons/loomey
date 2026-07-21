@@ -580,7 +580,7 @@ struct ChallengeSubmissionSheet: View {
         }
 
         let proofParts = bookProofParts + sessionProofParts
-        let proofSummary = proofParts.joined(separator: ", ")
+        let proofSummary = proofParts.joined(separator: "\n")
 
         print("Selected Books Count:", selectedBooks.count)
         print("Selected Sessions Count:", selectedSessions.count)

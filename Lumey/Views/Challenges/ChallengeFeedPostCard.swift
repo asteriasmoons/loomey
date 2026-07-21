@@ -37,10 +37,10 @@ struct ChallengeFeedPostCard: View {
     private var displayText: String {
         let postText = post?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !postText.isEmpty {
-            return postText
+            return formattedFeedText(postText)
         }
 
-        return feedItem.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return formattedFeedText(feedItem.text)
     }
 
     private var displayPhotoURL: String {
@@ -503,5 +503,13 @@ struct ChallengeFeedPostCard: View {
             }
         }
         .padding(.top, 2)
+    }
+
+    private func formattedFeedText(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard feedItem.feedType == "submission" else { return trimmed }
+        guard !trimmed.contains("\n") else { return trimmed }
+
+        return trimmed.replacingOccurrences(of: ", ", with: "\n")
     }
 }

@@ -12,11 +12,18 @@ struct ChallengeFeedEntryCard: View {
     var rating: Double?
     var avatarName: String?
     var avatarURL: String?
+    var likeCount: Int?
+    var commentCount: Int?
     var isLiked: Bool
     var onLikeTapped: (() -> Void)?
     var onCommentTapped: (() -> Void)?
+    var onSubmitComment: ((String) -> Void)?
+    var onOpenComments: (() -> Void)?
     var onProfileTapped: (() -> Void)?
     var isCommenting: Bool = false
+
+    @State private var showInlineCommentBox = false
+    @State private var inlineCommentText = ""
 
     init(
         submission: ChallengeSubmissionDTO,
@@ -24,9 +31,13 @@ struct ChallengeFeedEntryCard: View {
         rating: Double? = nil,
         avatarName: String? = nil,
         avatarURL: String? = nil,
+        likeCount: Int? = nil,
+        commentCount: Int? = nil,
         isLiked: Bool = false,
         onLikeTapped: (() -> Void)? = nil,
         onCommentTapped: (() -> Void)? = nil,
+        onSubmitComment: ((String) -> Void)? = nil,
+        onOpenComments: (() -> Void)? = nil,
         onProfileTapped: (() -> Void)? = nil,
         isCommenting: Bool = false
     ) {
@@ -35,9 +46,13 @@ struct ChallengeFeedEntryCard: View {
         self.rating = rating
         self.avatarName = avatarName
         self.avatarURL = avatarURL
+        self.likeCount = likeCount
+        self.commentCount = commentCount
         self.isLiked = isLiked
         self.onLikeTapped = onLikeTapped
         self.onCommentTapped = onCommentTapped
+        self.onSubmitComment = onSubmitComment
+        self.onOpenComments = onOpenComments
         self.onProfileTapped = onProfileTapped
         self.isCommenting = isCommenting
     }
@@ -67,6 +82,10 @@ struct ChallengeFeedEntryCard: View {
                 }
 
                 footer
+
+                if showInlineCommentBox {
+                    inlineCommentBox
+                }
             }
         }
     }
@@ -187,10 +206,9 @@ struct ChallengeFeedEntryCard: View {
                 .font(.system(size: 10, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
 
-            Text(submission.proofSummary)
+            Text(displayProofSummary)
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundStyle(LColors.textSecondary)
-                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
@@ -220,7 +238,7 @@ struct ChallengeFeedEntryCard: View {
                             : AnyShapeStyle(LColors.textSecondary)
                         )
 
-                    Text("\(submission.likeCount)")
+                    Text("\(displayLikeCount)")
                         .font(.system(size: 11, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                 }
@@ -228,6 +246,7 @@ struct ChallengeFeedEntryCard: View {
             .buttonStyle(.plain)
 
             Button {
+                showInlineCommentBox.toggle()
                 onCommentTapped?()
             } label: {
                 HStack(spacing: 5) {
@@ -236,24 +255,92 @@ struct ChallengeFeedEntryCard: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 14, height: 14)
+                        .foregroundStyle(
+                            showInlineCommentBox
+                            ? AnyShapeStyle(.white)
+                            : AnyShapeStyle(LColors.textSecondary)
+                        )
 
-                    Text("\(submission.commentCount)")
+                    Text("\(displayCommentCount)")
                         .font(.system(size: 11, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
                 }
-                .foregroundStyle(
-                    isCommenting
-                    ? AnyShapeStyle(.white)
-                    : AnyShapeStyle(LColors.textSecondary)
-                )
             }
             .buttonStyle(.plain)
+            .disabled(onSubmitComment == nil)
+
+            Button {
+                onOpenComments?()
+            } label: {
+                Image("chatfolder")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 14, height: 14)
+                    .foregroundStyle(
+                        displayCommentCount > 0 || isCommenting
+                        ? AnyShapeStyle(.white)
+                        : AnyShapeStyle(LColors.textSecondary)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(onOpenComments == nil)
 
             Spacer()
         }
         .padding(.top, 2)
     }
 
+    private var inlineCommentBox: some View {
+        HStack(spacing: 10) {
+            TextField("Write a comment...", text: $inlineCommentText)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 11)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.white.opacity(0.045))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+
+            Button {
+                let trimmed = inlineCommentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+
+                onSubmitComment?(trimmed)
+                inlineCommentText = ""
+                showInlineCommentBox = false
+            } label: {
+                Image("chatsparkle")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        Circle()
+                            .fill(LGradients.header)
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.top, 2)
+    }
+
     // MARK: - Helpers
+
+    private var displayLikeCount: Int {
+        likeCount ?? submission.likeCount
+    }
+
+    private var displayCommentCount: Int {
+        commentCount ?? submission.commentCount
+    }
 
     private var displayUsername: String {
         let trimmed = submission.username.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -262,5 +349,13 @@ struct ChallengeFeedEntryCard: View {
 
     private var displayNote: String {
         submission.submissionNote.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var displayProofSummary: String {
+        let trimmed = submission.proofSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        guard !trimmed.contains("\n") else { return trimmed }
+
+        return trimmed.replacingOccurrences(of: ", ", with: "\n")
     }
 }

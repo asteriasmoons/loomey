@@ -63,7 +63,7 @@ struct ChallengesView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 6)
-                    .padding(.bottom, 34)
+                    .padding(.bottom, 140)
                 }
             }
             .task {

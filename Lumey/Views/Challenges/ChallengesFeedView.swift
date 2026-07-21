@@ -490,6 +490,8 @@ struct ChallengesFeedView: View {
                     rating: nil,
                     avatarName: profileDTO(for: feedItem)?.avatarName,
                     avatarURL: profileDTO(for: feedItem)?.avatarURL,
+                    likeCount: feedItem.likeCount,
+                    commentCount: feedItem.commentCount,
                     isLiked: isLiked(feedItem),
                     onLikeTapped: {
                         Task {
@@ -497,6 +499,14 @@ struct ChallengesFeedView: View {
                         }
                     },
                     onCommentTapped: {
+                        // Inline comment box opens inside ChallengeFeedEntryCard.
+                    },
+                    onSubmitComment: { text in
+                        Task {
+                            await addComment(text, to: feedItem)
+                        }
+                    },
+                    onOpenComments: {
                         selectedFeedItemForComments = feedItem
                     },
                     onProfileTapped: {
