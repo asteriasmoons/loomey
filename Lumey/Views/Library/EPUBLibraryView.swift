@@ -431,36 +431,68 @@ struct EPUBLibraryView: View {
 
         do {
             let urls = try result.get()
+            var knownBooks = allBooks
 
             for url in urls {
-                // Check if already imported
                 let fileName = url.lastPathComponent
-                if epubBooks.contains(where: { $0.epubOriginalFileName == fileName }) {
+                if knownBooks.contains(where: { $0.hasEPUB && $0.epubOriginalFileName == fileName }) {
                     continue
                 }
 
-                // Extract metadata (title, author, cover) from EPUB
                 let meta = EPUBFileAccess.extractMetadata(from: url)
 
                 let fallbackTitle = url.deletingPathExtension().lastPathComponent
                     .replacingOccurrences(of: "_", with: " ")
                     .replacingOccurrences(of: "-", with: " ")
+                let resolvedTitle = meta.title.isEmpty ? fallbackTitle : meta.title
 
-                let book = Book(
-                    title: meta.title.isEmpty ? fallbackTitle : meta.title,
+                if let existingBook = LibraryImportExportService.existingBookMatching(
+                    title: resolvedTitle,
                     author: meta.author,
-                    format: .ebook,
-                    coverImageData: meta.coverImageData
-                )
+                    in: knownBooks
+                ) {
+                    guard !existingBook.hasEPUB else { continue }
 
-                modelContext.insert(book)
-                try EPUBFileAccess.attachEPUB(from: url, to: book)
+                    try attachImportedEPUB(from: url, metadata: meta, fallbackTitle: resolvedTitle, to: existingBook)
+                } else {
+                    let book = Book(
+                        title: resolvedTitle,
+                        author: meta.author,
+                        format: .ebook,
+                        coverImageData: meta.coverImageData
+                    )
+
+                    modelContext.insert(book)
+                    try EPUBFileAccess.attachEPUB(from: url, to: book)
+                    knownBooks.append(book)
+                }
             }
 
             try? modelContext.save()
         } catch {
             importError = error.localizedDescription
         }
+    }
+
+    private func attachImportedEPUB(
+        from url: URL,
+        metadata: EPUBMetadata,
+        fallbackTitle: String,
+        to book: Book
+    ) throws {
+        if book.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            book.title = fallbackTitle
+        }
+
+        if book.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            book.author = metadata.author
+        }
+
+        if book.coverImageData == nil {
+            book.coverImageData = metadata.coverImageData
+        }
+
+        try EPUBFileAccess.attachEPUB(from: url, to: book)
     }
 
     private func openReader(for book: Book) {

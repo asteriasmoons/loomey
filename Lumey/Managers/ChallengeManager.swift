@@ -61,6 +61,11 @@ final class ChallengeManager: ObservableObject {
         entry: ChallengeEntry,
         submission: ChallengeSubmission
     ) async {
+        guard entry.status != .approved, submission.validationStatus != .approved else {
+            lastValidationResult = .approved("This challenge has already been approved.")
+            return
+        }
+
         print("===== MANAGER SUBMIT START =====")
         print("Challenge:", challenge.title)
         print("Requirement:", challenge.requirementText)
@@ -86,7 +91,7 @@ final class ChallengeManager: ObservableObject {
 
         switch result {
         case .approved(let message):
-            approveSubmission(submission, entry: entry, challenge: challenge, message: message)
+            await approveSubmission(submission, entry: entry, challenge: challenge, message: message)
 
         case .inProgress(let message):
             submission.validationStatus = .inProgress
@@ -163,7 +168,7 @@ final class ChallengeManager: ObservableObject {
 
             switch aiResult {
             case .approved(let message):
-                approveSubmission(submission, entry: entry, challenge: challenge, message: message)
+                await approveSubmission(submission, entry: entry, challenge: challenge, message: message)
 
             case .inProgress(let message):
                 submission.validationStatus = .inProgress
@@ -205,7 +210,7 @@ final class ChallengeManager: ObservableObject {
         entry: ChallengeEntry,
         challenge: ReadingChallenge,
         message: String
-    ) {
+    ) async {
         guard !entry.pointsAwarded else { return } // Prevent duplicate rewards
 
         submission.validationStatus = .approved
@@ -223,6 +228,77 @@ final class ChallengeManager: ObservableObject {
         awardPoints(points: challenge.points, userID: entry.userID)
 
         try? modelContext.save()
+
+        await postApprovedSubmissionToFeedIfNeeded(submission, challenge: challenge)
+    }
+
+    func postApprovedSubmissionToFeedIfNeeded(
+        _ submission: ChallengeSubmission,
+        challenge: ReadingChallenge
+    ) async {
+        guard submission.validationStatus == .approved else { return }
+        guard !submission.postedToFeed || submission.feedItemID == nil else { return }
+
+        do {
+            let remoteSubmissionID: String
+
+            if let existingRemoteID = submission.remoteSubmissionID,
+               !existingRemoteID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                remoteSubmissionID = existingRemoteID
+            } else {
+                let remoteSubmission = try await ChallengeSocialService.shared.createSubmission(
+                    remoteDTO(for: submission, validationStatus: "submitted")
+                )
+
+                guard let createdID = remoteSubmission.id,
+                      !createdID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else { return }
+
+                submission.remoteSubmissionID = createdID
+                remoteSubmissionID = createdID
+                try? modelContext.save()
+            }
+
+            let approvedResponse = try await ChallengeSocialService.shared.approveSubmission(
+                submissionID: remoteSubmissionID,
+                validationMessage: submission.validationMessage,
+                challengeTitle: challenge.title
+            )
+
+            submission.remoteSubmissionID = approvedResponse.submission.id ?? remoteSubmissionID
+            submission.postedToFeed = approvedResponse.submission.postedToFeed ?? (approvedResponse.feedItem != nil)
+            submission.feedItemID = approvedResponse.submission.feedItemID ?? approvedResponse.feedItem?.id
+            try? modelContext.save()
+        } catch {
+            print("Failed to post approved challenge submission to feed:", error)
+        }
+    }
+
+    private func remoteDTO(
+        for submission: ChallengeSubmission,
+        validationStatus: String
+    ) -> ChallengeSubmissionDTO {
+        ChallengeSubmissionDTO(
+            id: nil,
+            challengeID: submission.challengeID.uuidString,
+            entryID: submission.entryID.uuidString,
+            userID: submission.userID,
+            username: submission.username,
+            linkedBookIDs: submission.linkedBookIDs.map { $0.uuidString },
+            linkedSessionIDs: submission.linkedSessionIDs.map { $0.uuidString },
+            linkedReviewIDs: submission.linkedReviewIDs.map { $0.uuidString },
+            linkedReadingListIDs: submission.linkedReadingListIDs.map { $0.uuidString },
+            submissionNote: submission.submissionNote,
+            proofSummary: submission.proofSummary,
+            validationStatus: validationStatus,
+            validationMessage: submission.validationMessage,
+            submittedDate: submission.submittedDate,
+            approvedDate: nil,
+            postedToFeed: false,
+            feedItemID: nil,
+            likeCount: submission.likeCount,
+            commentCount: submission.commentCount
+        )
     }
 
     // MARK: - Award Points

@@ -27,6 +27,9 @@ struct ChallengeSubmissionSheet: View {
     @Query(sort: \ReadingList.updatedAt, order: .reverse)
     private var allReadingLists: [ReadingList]
 
+    @Query(sort: \ChallengeSubmission.submittedDate, order: .reverse)
+    private var allSubmissions: [ChallengeSubmission]
+
     @State private var selectedBookIDs: [UUID] = []
     @State private var selectedSessionIDs: [UUID] = []
     @State private var selectedReviewIDs: [UUID] = []
@@ -61,6 +64,12 @@ struct ChallengeSubmissionSheet: View {
         challenge.validationType == .experience || challenge.validationType == .seasonalTheme || challenge.requiresAIValidation
     }
 
+    private var isSubmissionLocked: Bool {
+        entry.status == .approved || allSubmissions.contains {
+            $0.entryID == entry.id && $0.validationStatus == .approved
+        }
+    }
+
     var body: some View {
         ZStack {
             LumeyBackground()
@@ -73,27 +82,33 @@ struct ChallengeSubmissionSheet: View {
                     VStack(alignment: .leading, spacing: 16) {
                         challengeInfoCard
 
-                        if needsBooks {
+                        if isSubmissionLocked {
+                            approvedLockCard
+                        }
+
+                        if !isSubmissionLocked && needsBooks {
                             bookPickerSection
                         }
 
-                        if needsSessions {
+                        if !isSubmissionLocked && needsSessions {
                             sessionPickerSection
                         }
 
-                        if needsReviews {
+                        if !isSubmissionLocked && needsReviews {
                             reviewPickerSection
                         }
 
-                        if needsReadingLists {
+                        if !isSubmissionLocked && needsReadingLists {
                             readingListPickerSection
                         }
 
-                        if needsSubmissionNote || challenge.requiresAIValidation {
+                        if !isSubmissionLocked && (needsSubmissionNote || challenge.requiresAIValidation) {
                             submissionNoteSection
                         }
 
-                        proofSummarySection
+                        if !isSubmissionLocked {
+                            proofSummarySection
+                        }
 
                         submitButton
                     }
@@ -199,6 +214,33 @@ struct ChallengeSubmissionSheet: View {
 
                 Spacer()
             }
+        }
+    }
+
+    private var approvedLockCard: some View {
+        GlassCard(padding: 14) {
+            HStack(alignment: .top, spacing: 10) {
+                Image("checkwavy")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 18, height: 18)
+                    .foregroundStyle(LColors.success)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Submission Approved")
+                        .font(.system(size: 14, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+
+                    Text("This challenge is locked to prevent accidental resubmission.")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(LColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -456,7 +498,7 @@ struct ChallengeSubmissionSheet: View {
                         .scaledToFit()
                         .frame(width: 16, height: 16)
                 }
-                Text("Submit for Validation")
+                Text(isSubmissionLocked ? "Already Approved" : "Submit for Validation")
                     .font(.system(size: 16, weight: .black, design: .rounded))
             }
             .foregroundStyle(.white)
@@ -469,8 +511,8 @@ struct ChallengeSubmissionSheet: View {
             .shadow(color: LColors.gradientPurple.opacity(0.3), radius: 12, y: 6)
         }
         .buttonStyle(.plain)
-        .disabled(isSubmitting)
-        .opacity(isSubmitting ? 0.6 : 1)
+        .disabled(isSubmitting || isSubmissionLocked)
+        .opacity(isSubmitting || isSubmissionLocked ? 0.6 : 1)
     }
 
     // MARK: - Picker Section Builder
@@ -514,6 +556,8 @@ struct ChallengeSubmissionSheet: View {
     // MARK: - Submit
 
     private func submitEntry() {
+        guard !isSubmissionLocked else { return }
+
         isSubmitting = true
 
         print("===== SUBMIT ENTRY START =====")

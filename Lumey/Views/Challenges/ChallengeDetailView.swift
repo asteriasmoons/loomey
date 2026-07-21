@@ -20,6 +20,9 @@ struct ChallengeDetailView: View {
     @Query(sort: \ChallengeSubmission.submittedDate, order: .reverse)
     private var allSubmissions: [ChallengeSubmission]
 
+    @Query(sort: \ChallengeUserProfile.username)
+    private var profiles: [ChallengeUserProfile]
+
     @State private var showingSubmissionSheet = false
     @State private var showingResultView = false
     @State private var challengeManager: ChallengeManager?
@@ -34,7 +37,17 @@ struct ChallengeDetailView: View {
 
     private var userSubmission: ChallengeSubmission? {
         guard let entry = userEntry else { return nil }
-        return allSubmissions.first(where: { $0.entryID == entry.id })
+        let submissions = allSubmissions.filter { $0.entryID == entry.id }
+        return submissions.first(where: { $0.validationStatus == .approved }) ?? submissions.first
+    }
+
+    private var userSubmissions: [ChallengeSubmission] {
+        guard let entry = userEntry else { return [] }
+        return allSubmissions.filter { $0.entryID == entry.id }
+    }
+
+    private var hasApprovedSubmission: Bool {
+        userEntry?.status == .approved || userSubmissions.contains { $0.validationStatus == .approved }
     }
 
     private var challengeSubmissions: [ChallengeSubmission] {
@@ -70,6 +83,9 @@ struct ChallengeDetailView: View {
         }
         .onAppear {
             challengeManager = ChallengeManager(modelContext: modelContext)
+            Task {
+                await postApprovedSubmissionsToFeedIfNeeded()
+            }
         }
         .adaptivePresentation(isPresented: $showingSubmissionSheet, useFullScreenCover: horizontalSizeClass == .regular) {
             if let entry = userEntry {
@@ -271,7 +287,29 @@ struct ChallengeDetailView: View {
                 }
                 .buttonStyle(.plain)
             } else if let entry = userEntry {
-                if entry.status == .joined || entry.status == .needsMoreInfo {
+                if hasApprovedSubmission {
+                    HStack(spacing: 8) {
+                        Image("checkwavy")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 16, height: 16)
+
+                        Text("Approved")
+                            .font(.system(size: 16, weight: .black, design: .rounded))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(LColors.glassSurface2)
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(LColors.success.opacity(0.75), lineWidth: 1)
+                    )
+                } else if entry.status == .joined || entry.status == .needsMoreInfo {
                     Button {
                         showingSubmissionSheet = true
                     } label: {
@@ -407,11 +445,13 @@ struct ChallengeDetailView: View {
                             validationMessage: submission.validationMessage,
                             submittedDate: submission.submittedDate,
                             approvedDate: submission.approvedDate,
-                            postedToFeed: false,
-                            feedItemID: nil,
+                            postedToFeed: submission.postedToFeed,
+                            feedItemID: submission.feedItemID,
                             likeCount: submission.likeCount,
                             commentCount: submission.commentCount
-                        )
+                        ),
+                        avatarName: profile(for: submission)?.avatarName,
+                        avatarURL: profile(for: submission)?.avatarURL
                     )
                 }
             }
@@ -423,6 +463,20 @@ struct ChallengeDetailView: View {
     private func joinChallenge() {
         guard let manager = challengeManager else { return }
         _ = manager.joinChallenge(challenge, userID: currentUserID)
+    }
+
+    @MainActor
+    private func postApprovedSubmissionsToFeedIfNeeded() async {
+        let manager = challengeManager ?? ChallengeManager(modelContext: modelContext)
+        challengeManager = manager
+
+        for submission in userSubmissions where submission.validationStatus == .approved {
+            await manager.postApprovedSubmissionToFeedIfNeeded(submission, challenge: challenge)
+        }
+    }
+
+    private func profile(for submission: ChallengeSubmission) -> ChallengeUserProfile? {
+        profiles.first { $0.userID == submission.userID }
     }
 }
 

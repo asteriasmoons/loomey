@@ -34,6 +34,9 @@ final class ChallengeSubmission {
     // Social
     var likeCount: Int = 0
     var commentCount: Int = 0
+    var remoteSubmissionID: String?
+    var postedToFeed: Bool = false
+    var feedItemID: String?
 
     // Display info (denormalized for feed)
     var username: String = ""

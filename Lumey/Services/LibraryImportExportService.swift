@@ -420,6 +420,20 @@ enum LibraryImportExportService {
         return nil
     }
 
+    static func existingBookMatching(
+        title: String,
+        author: String,
+        isbn: String = "",
+        in existingBooks: [Book]
+    ) -> Book? {
+        let candidateIdentity = BookIdentity(title: title, author: author, isbn: isbn)
+
+        return existingBooks.first { book in
+            guard book.deletedAt == nil, !book.isArchived else { return false }
+            return duplicateReason(candidate: candidateIdentity, existing: BookIdentity(book)) != nil
+        }
+    }
+
     private static func indexHeaders(_ header: [String]) -> [String: Int] {
         var index: [String: Int] = [:]
 
@@ -824,6 +838,14 @@ private struct BookIdentity {
         self.titleBase = LibraryImportExportService.normalizedTitleForIdentity(draft.title, stripSubtitle: true)
         self.author = LibraryImportExportService.normalizedAuthorForIdentity(draft.author)
         self.authorLoose = LibraryImportExportService.looseAuthorForIdentity(draft.author)
+    }
+
+    init(title: String, author: String, isbn: String) {
+        self.isbns = LibraryImportExportService.isbnVariantsForIdentity(isbn)
+        self.titleFull = LibraryImportExportService.normalizedTitleForIdentity(title, stripSubtitle: false)
+        self.titleBase = LibraryImportExportService.normalizedTitleForIdentity(title, stripSubtitle: true)
+        self.author = LibraryImportExportService.normalizedAuthorForIdentity(author)
+        self.authorLoose = LibraryImportExportService.looseAuthorForIdentity(author)
     }
 }
 

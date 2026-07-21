@@ -357,28 +357,12 @@ struct ChallengeLeaderboardView: View {
         profile: ChallengeUserProfile?,
         submission: ChallengeSubmission
     ) -> some View {
-        ZStack {
-            Circle()
-                .fill(LColors.glassSurface)
-                .overlay(
-                    Circle()
-                        .strokeBorder(LGradients.header, lineWidth: 1)
-                )
-
-            if let avatarName = profile?.avatarName,
-               !avatarName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Image(avatarName)
-                    .resizable()
-                    .scaledToFill()
-                    .clipShape(Circle())
-                    .padding(3)
-            } else {
-                Text(String(displayUsername(profile: profile, submission: submission).prefix(1)).uppercased())
-                    .font(.system(size: 15, weight: .black, design: .rounded))
-                    .foregroundStyle(LGradients.header)
-            }
-        }
-        .frame(width: 40, height: 40)
+        UserAvatarView(
+            avatarURL: profile?.avatarURL,
+            avatarName: profile?.avatarName,
+            size: 40,
+            iconSize: 22
+        )
     }
 
     private func statusBadge(for status: ChallengeSubmissionStatus) -> some View {

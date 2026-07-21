@@ -34,9 +34,7 @@ struct ProfileView: View {
     @Query(sort: \ReadingChallenge.title)
     private var challenges: [ReadingChallenge]
 
-    @State private var pickerItem: PhotosPickerItem? = nil
     @State private var challengeAvatarItem: PhotosPickerItem?
-    @State private var profileImage: UIImage? = nil
     @State private var showingSignInSheet = false
     @State private var editedChallengeUsername = ""
     @State private var isEditingChallengeUsername = false
@@ -126,11 +124,6 @@ struct ProfileView: View {
         guard let challengeID = activeEntry?.challengeID else { return nil }
 
         return challenges.first { $0.id == challengeID }?.title
-    }
-
-    private var profileDisplayName: String {
-        let trimmed = user?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? "Your Name" : trimmed
     }
 
     private var profileEmail: String {
@@ -423,107 +416,6 @@ struct ProfileView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 16) {
-
-                        // MARK: Photo + name card
-                        GlassCard(padding: 24) {
-                            VStack(spacing: 16) {
-
-                                // Circle photo picker
-                                PhotosPicker(selection: $pickerItem, matching: .images) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(LColors.glassSurface2)
-                                            .overlay(Circle().strokeBorder(LColors.glassBorder, lineWidth: 1))
-                                            .frame(width: 96, height: 96)
-
-                                        if let img = profileImage {
-                                            Image(uiImage: img)
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(width: 96, height: 96)
-                                                .clipShape(Circle())
-                                        } else {
-                                            Image("profilewavy")
-                                                .renderingMode(.template)
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(width: 44, height: 44)
-                                                .foregroundStyle(LGradients.header)
-                                        }
-
-                                        // Camera badge
-                                        Circle()
-                                            .fill(LColors.glassSurface)
-                                            .overlay(Circle().strokeBorder(LColors.glassBorder, lineWidth: 0.75))
-                                            .frame(width: 26, height: 26)
-                                            .overlay(
-                                                Image("addwavy")
-                                                    .renderingMode(.template)
-                                                    .resizable()
-                                                    .scaledToFit()
-                                                    .frame(width: 12, height: 12)
-                                                    .foregroundStyle(LGradients.header)
-                                            )
-                                            .offset(x: 32, y: 32)
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .onChange(of: pickerItem) { loadPhoto() }
-
-                                VStack(spacing: 8) {
-                                    Text(profileDisplayName)
-                                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                                        .foregroundStyle(LColors.textPrimary)
-                                        .multilineTextAlignment(.center)
-
-                                    Text(profileEmail)
-                                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                                        .foregroundStyle(LColors.textSecondary)
-                                        .multilineTextAlignment(.center)
-
-                                    Text(isSignedIn ? "Signed in with Apple" : "Sign in to sync your Loomey profile.")
-                                        .font(.system(size: 12, weight: .black, design: .rounded))
-                                        .foregroundStyle(isSignedIn ? AnyShapeStyle(LGradients.header) : AnyShapeStyle(LColors.textSecondary))
-                                        .multilineTextAlignment(.center)
-                                }
-
-                                Button {
-                                    if isSignedIn {
-                                        appState.signOut()
-                                    } else {
-                                        showingSignInSheet = true
-                                    }
-                                } label: {
-                                    HStack(spacing: 10) {
-                                        Image(isSignedIn ? "xmarkwavy" : "profilewavy")
-                                            .renderingMode(.template)
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(width: 15, height: 15)
-                                            .foregroundStyle(.white)
-
-                                        Text(isSignedIn ? "Sign Out" : "Sign In")
-                                            .font(.system(size: 14, weight: .black, design: .rounded))
-                                            .foregroundStyle(.white)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 13)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: LSpacing.buttonRadius, style: .continuous)
-                                            .fill(isSignedIn ? AnyShapeStyle(LColors.glassSurface2) : AnyShapeStyle(LColors.accentGradient))
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: LSpacing.buttonRadius, style: .continuous)
-                                            .strokeBorder(isSignedIn ? AnyShapeStyle(LColors.glassBorder) : AnyShapeStyle(LGradients.header), lineWidth: 1.5)
-                                    )
-                                    .shadow(color: isSignedIn ? Color.black.opacity(0.18) : LColors.gradientPurple.opacity(0.25), radius: 12, x: 0, y: 7)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .padding(.horizontal, 16)
-
                         if let activeChallengeProfile {
                             challengeProfileSection(activeChallengeProfile)
                                 .padding(.horizontal, 16)
@@ -542,7 +434,6 @@ struct ProfileView: View {
             }
         }
         .onAppear {
-            loadSavedPhoto()
             ensureCurrentChallengeProfileIfNeeded()
             syncChallengeProfileState()
         }
@@ -584,10 +475,6 @@ struct ProfileView: View {
 
     private func challengeProfileSection(_ profile: ChallengeUserProfile) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Challenge Profile")
-                .font(.system(size: 22, weight: .black, design: .rounded))
-                .foregroundStyle(.white)
-
             challengeProfileHero(profile)
 
             challengeStatsGrid(profile)
@@ -677,8 +564,61 @@ struct ProfileView: View {
                     socialMiniStat(title: "Followers", value: "\(profile.followersCount)")
                     socialMiniStat(title: "Following", value: "\(profile.followingCount)")
                 }
+
+                if isViewingCurrentChallengeProfile {
+                    accountConnectionControls
+                }
             }
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var accountConnectionControls: some View {
+        VStack(spacing: 12) {
+            VStack(spacing: 6) {
+                Text(profileEmail)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(LColors.textSecondary)
+                    .multilineTextAlignment(.center)
+
+                Text(isSignedIn ? "Signed in with Apple" : "Sign in to sync your Loomey profile.")
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundStyle(isSignedIn ? AnyShapeStyle(LGradients.header) : AnyShapeStyle(LColors.textSecondary))
+                    .multilineTextAlignment(.center)
+            }
+
+            Button {
+                if isSignedIn {
+                    appState.signOut()
+                } else {
+                    showingSignInSheet = true
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(isSignedIn ? "xmarkwavy" : "profilewavy")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 15, height: 15)
+                        .foregroundStyle(.white)
+
+                    Text(isSignedIn ? "Sign Out" : "Sign In")
+                        .font(.system(size: 14, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(
+                    RoundedRectangle(cornerRadius: LSpacing.buttonRadius, style: .continuous)
+                        .fill(isSignedIn ? AnyShapeStyle(LColors.glassSurface2) : AnyShapeStyle(LColors.accentGradient))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: LSpacing.buttonRadius, style: .continuous)
+                        .strokeBorder(isSignedIn ? AnyShapeStyle(LColors.glassBorder) : AnyShapeStyle(LGradients.header), lineWidth: 1.5)
+                )
+                .shadow(color: isSignedIn ? Color.black.opacity(0.18) : LColors.gradientPurple.opacity(0.25), radius: 12, x: 0, y: 7)
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -1346,39 +1286,6 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Photo handling
-
-    private func loadPhoto() {
-        Task {
-            guard let item = pickerItem,
-                  let data = try? await item.loadTransferable(type: Data.self),
-                  let img = UIImage(data: data) else { return }
-            await MainActor.run {
-                profileImage = img
-                savePhoto(img)
-            }
-        }
-    }
-
-    private func savePhoto(_ img: UIImage) {
-        guard let data = img.jpegData(compressionQuality: 0.85) else { return }
-        let url = photoURL()
-        try? data.write(to: url)
-        users.first?.profileImagePath = url.path
-        try? modelContext.save()
-    }
-
-    private func loadSavedPhoto() {
-        let url = photoURL()
-        if let data = try? Data(contentsOf: url), let img = UIImage(data: data) {
-            profileImage = img
-        }
-    }
-
-    private func photoURL() -> URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("lumey_profile_photo.jpg")
-    }
 }
 
 struct ReadingDNARow: View {
