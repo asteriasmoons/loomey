@@ -47,18 +47,35 @@ struct ReadingStatsView: View {
         sessions.reduce(0) { $0 + $1.pagesRead }
     }
 
+    private var finishedBooksForMilestones: [Book] {
+        books.filter {
+            !$0.isArchived &&
+            $0.status == .finished
+        }
+    }
+
+    private var totalFinishedBookPages: Int {
+        finishedBooksForMilestones.reduce(0) { total, book in
+            total + finishedPageCount(for: book)
+        }
+    }
+
     private var totalSessions: Int {
         sessions.count
     }
     
     private var totalBooksFinished: Int {
-        books.filter {
-            !$0.isArchived &&
-            (
-                $0.status == .finished ||
-                $0.dateFinished != nil
-            )
-        }.count
+        finishedBooksForMilestones.count
+    }
+
+    private var hasWrittenReview: Bool {
+        allReviews.contains {
+            !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    private func finishedPageCount(for book: Book) -> Int {
+        max(book.totalPages, book.currentPage, book.ebookTotalPages)
     }
 
     private var averageSessionMinutes: Int {
@@ -199,26 +216,31 @@ struct ReadingStatsView: View {
             ReadingMilestone(
                 title: "First Book Finished",
                 subtitle: "Finish your first book in Lumey.",
+                iconName: "startrophy",
                 isUnlocked: totalBooksFinished >= 1
             ),
             ReadingMilestone(
                 title: "First Review Written",
                 subtitle: "Write your first book review.",
-                isUnlocked: !allReviews.isEmpty
+                iconName: "starnote",
+                isUnlocked: hasWrittenReview
             ),
             ReadingMilestone(
                 title: "100 Pages Read",
-                subtitle: "Read 100 tracked pages.",
-                isUnlocked: totalPages >= 100
+                subtitle: "Read 100 pages from finished books.",
+                iconName: "openbook",
+                isUnlocked: totalFinishedBookPages >= 100
             ),
             ReadingMilestone(
                 title: "1,000 Pages Read",
-                subtitle: "Read 1,000 tracked pages.",
-                isUnlocked: totalPages >= 1_000
+                subtitle: "Read 1,000 pages from finished books.",
+                iconName: "books",
+                isUnlocked: totalFinishedBookPages >= 1_000
             ),
             ReadingMilestone(
                 title: "10 Books Finished",
                 subtitle: "Finish 10 books total.",
+                iconName: "bookstack",
                 isUnlocked: totalBooksFinished >= 10
             )
         ]
@@ -319,6 +341,7 @@ struct ReadingMilestone: Identifiable {
     let id = UUID()
     let title: String
     let subtitle: String
+    let iconName: String
     let isUnlocked: Bool
 }
 
@@ -652,7 +675,7 @@ struct ReadingMilestoneRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image("startrophy")
+            Image(milestone.iconName)
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
