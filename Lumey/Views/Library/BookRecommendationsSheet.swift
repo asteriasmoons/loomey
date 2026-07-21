@@ -39,14 +39,7 @@ struct BookRecommendationsSheet: View {
                         searchCard
 
                         if isLoading {
-                            VStack {
-                                Spacer(minLength: 160)
-
-                                ProgressView()
-
-                                Spacer(minLength: 160)
-                            }
-                            .frame(maxWidth: .infinity)
+                            loadingState
                         } else if let errorMessage {
                             Text(errorMessage)
                                 .font(.callout)
@@ -73,6 +66,17 @@ struct BookRecommendationsSheet: View {
                 }
             }
         }
+    }
+
+    private var loadingState: some View {
+        VStack {
+            Spacer(minLength: 0)
+
+            LumeyDottedGradientSpinner(size: 62)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, minHeight: 320, alignment: .center)
     }
 
     private var headerSection: some View {

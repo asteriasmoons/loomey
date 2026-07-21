@@ -418,6 +418,52 @@ struct LumeyGradientTimeDrumPicker: View {
     }
 }
 
+// MARK: - Dotted Gradient Spinner
+
+struct LumeyDottedGradientSpinner: View {
+    var size: CGFloat = 58
+    var dotCount: Int = 14
+
+    @State private var rotation = 0.0
+
+    private var dotSize: CGFloat {
+        max(5, size * 0.12)
+    }
+
+    private var radius: CGFloat {
+        (size - dotSize) / 2
+    }
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<dotCount, id: \.self) { index in
+                Circle()
+                    .fill(LGradients.header)
+                    .frame(width: dotSize, height: dotSize)
+                    .opacity(dotOpacity(for: index))
+                    .shadow(color: LColors.gradientBlue.opacity(0.22), radius: 5)
+                    .offset(y: -radius)
+                    .rotationEffect(.degrees(Double(index) / Double(dotCount) * 360))
+            }
+        }
+        .frame(width: size, height: size)
+        .rotationEffect(.degrees(rotation))
+        .onAppear {
+            rotation = 0
+
+            withAnimation(.linear(duration: 0.95).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+        }
+        .accessibilityLabel("Loading")
+    }
+
+    private func dotOpacity(for index: Int) -> Double {
+        let progress = Double(index) / Double(max(dotCount - 1, 1))
+        return 0.28 + (progress * 0.72)
+    }
+}
+
 // MARK: - Glass Card
 
 struct GlassCard<Content: View>: View {

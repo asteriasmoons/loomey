@@ -34,8 +34,7 @@ struct BookSearchSheet: View {
                         searchCard
 
                         if isLoading {
-                            ProgressView()
-                                .padding(.top, 30)
+                            loadingState
                         } else if let errorMessage {
                             Text(errorMessage)
                                 .font(.callout)
@@ -62,6 +61,17 @@ struct BookSearchSheet: View {
                 }
             }
         }
+    }
+
+    private var loadingState: some View {
+        VStack {
+            Spacer(minLength: 0)
+
+            LumeyDottedGradientSpinner(size: 62)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, minHeight: 320, alignment: .center)
     }
 
     private var headerSection: some View {
