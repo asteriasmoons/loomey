@@ -68,6 +68,7 @@ struct ChallengesView: View {
             }
             .task {
                 seedIfNeeded()
+                backfillChallengeCycles()
                 backfillSubmissionChallengeTitles()
             }
             .adaptivePresentation(item: $selectedChallenge, useFullScreenCover: horizontalSizeClass == .regular) { challenge in
@@ -372,7 +373,15 @@ struct ChallengesView: View {
     }
 
     private var activeChallenges: [ChallengeEntry] {
-        allEntries.filter { $0.userID == currentUserID && $0.isActive }
+        allEntries.filter { entry in
+            guard entry.userID == currentUserID,
+                  entry.isActive,
+                  let challenge = challenge(for: entry.challengeID)
+            else { return false }
+
+            guard challenge.isRecurring else { return true }
+            return entryIsInCurrentCycle(entry, challenge: challenge)
+        }
     }
 
     private var filteredChallenges: [ReadingChallenge] {
@@ -404,7 +413,17 @@ struct ChallengesView: View {
     }
 
     private func entryFor(_ challenge: ReadingChallenge) -> ChallengeEntry? {
-        allEntries.first(where: { $0.challengeID == challenge.id && $0.userID == currentUserID })
+        let entries = allEntries.filter {
+            $0.challengeID == challenge.id && $0.userID == currentUserID
+        }
+
+        guard challenge.isRecurring else {
+            return entries.first
+        }
+
+        return entries.first {
+            entryIsInCurrentCycle($0, challenge: challenge)
+        }
     }
 
     private func challenge(for id: UUID) -> ReadingChallenge? {
@@ -414,6 +433,11 @@ struct ChallengesView: View {
     private func seedIfNeeded() {
         let manager = ChallengeManager(modelContext: modelContext)
         manager.seedChallengesIfNeeded()
+    }
+
+    private func backfillChallengeCycles() {
+        let manager = ChallengeManager(modelContext: modelContext)
+        manager.backfillCycleMetadata()
     }
 
     private func backfillSubmissionChallengeTitles() {
@@ -432,6 +456,14 @@ struct ChallengesView: View {
         if didChange {
             try? modelContext.save()
         }
+    }
+
+    private func entryIsInCurrentCycle(_ entry: ChallengeEntry, challenge: ReadingChallenge) -> Bool {
+        let cycle = challenge.cycle()
+        return entry.cycleID == cycle.id || (
+            Calendar.current.isDate(entry.startDate, inSameDayAs: cycle.startDate) &&
+            Calendar.current.isDate(entry.endDate, inSameDayAs: cycle.endDate)
+        )
     }
 
     // MARK: - Reusable Components

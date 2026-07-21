@@ -235,7 +235,7 @@ struct ChallengeSubmissionSheet: View {
                         .font(.system(size: 14, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
 
-                    Text("This challenge is locked to prevent accidental resubmission.")
+                    Text(challenge.isRecurring ? "This cycle is locked to prevent accidental resubmission. You can join again when the next cycle begins." : "This challenge is locked to prevent accidental resubmission.")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(LColors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -677,7 +677,10 @@ struct ChallengeSubmissionSheet: View {
             linkedReviewIDs: selectedReviewIDs,
             linkedReadingListIDs: selectedReadingListIDs,
             submissionNote: submissionNote,
-            proofSummary: proofSummary
+            proofSummary: proofSummary,
+            cycleID: entry.cycleID,
+            cycleStartDate: entry.startDate,
+            cycleEndDate: entry.endDate
         )
 
         print("SUBMISSION CREATED:")

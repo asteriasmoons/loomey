@@ -563,6 +563,9 @@ struct ChallengeFeedItemDTO: Codable, Identifiable {
 
     let challengeID: String?
     let challengeTitle: String?
+    var cycleID: String? = nil
+    var cycleStartDate: Date? = nil
+    var cycleEndDate: Date? = nil
 
     let text: String
     let photoURL: String?
@@ -582,6 +585,9 @@ struct ChallengeFeedItemDTO: Codable, Identifiable {
         case username
         case challengeID
         case challengeTitle
+        case cycleID
+        case cycleStartDate
+        case cycleEndDate
         case text
         case photoURL
         case photoBase64
@@ -651,6 +657,9 @@ struct ChallengeSubmissionDTO: Codable, Identifiable {
 
     let submittedDate: Date?
     let approvedDate: Date?
+    var cycleID: String? = nil
+    var cycleStartDate: Date? = nil
+    var cycleEndDate: Date? = nil
 
     let postedToFeed: Bool?
     let feedItemID: String?
@@ -674,6 +683,9 @@ struct ChallengeSubmissionDTO: Codable, Identifiable {
         case validationMessage
         case submittedDate
         case approvedDate
+        case cycleID
+        case cycleStartDate
+        case cycleEndDate
         case postedToFeed
         case feedItemID
         case likeCount

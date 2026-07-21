@@ -13,6 +13,7 @@ final class ChallengeEntry {
     var userID: String = ""
     var startDate: Date = Date()
     var endDate: Date = Date()
+    var cycleID: String = ""
     var statusRawValue: String = ChallengeSubmissionStatus.joined.rawValue
     var submittedDate: Date?
     var approvedDate: Date?
@@ -23,13 +24,16 @@ final class ChallengeEntry {
         challengeID: UUID,
         userID: String,
         startDate: Date = Date(),
-        durationDays: Int = 7
+        durationDays: Int = 7,
+        endDate: Date? = nil,
+        cycleID: String = ""
     ) {
         self.id = UUID()
         self.challengeID = challengeID
         self.userID = userID
         self.startDate = startDate
-        self.endDate = Calendar.current.date(byAdding: .day, value: durationDays, to: startDate) ?? startDate
+        self.endDate = endDate ?? Calendar.current.date(byAdding: .day, value: durationDays, to: startDate) ?? startDate
+        self.cycleID = cycleID
         self.statusRawValue = ChallengeSubmissionStatus.joined.rawValue
     }
 }

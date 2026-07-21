@@ -31,8 +31,20 @@ struct ChallengeDetailView: View {
         appState.currentAppleUserId ?? ""
     }
 
+    private var currentCycle: ChallengeCycle {
+        challenge.cycle()
+    }
+
     private var userEntry: ChallengeEntry? {
-        allEntries.first(where: { $0.challengeID == challenge.id && $0.userID == currentUserID })
+        let entries = allEntries.filter {
+            $0.challengeID == challenge.id && $0.userID == currentUserID
+        }
+
+        guard challenge.isRecurring else {
+            return entries.first
+        }
+
+        return entries.first(where: entryIsInCurrentCycle)
     }
 
     private var userSubmission: ChallengeSubmission? {
@@ -44,6 +56,12 @@ struct ChallengeDetailView: View {
     private var userSubmissions: [ChallengeSubmission] {
         guard let entry = userEntry else { return [] }
         return allSubmissions.filter { $0.entryID == entry.id }
+    }
+
+    private var currentUserChallengeSubmissions: [ChallengeSubmission] {
+        allSubmissions.filter {
+            $0.challengeID == challenge.id && $0.userID == currentUserID
+        }
     }
 
     private var hasApprovedSubmission: Bool {
@@ -83,6 +101,7 @@ struct ChallengeDetailView: View {
         }
         .onAppear {
             challengeManager = ChallengeManager(modelContext: modelContext)
+            challengeManager?.backfillCycleMetadata()
             Task {
                 await postApprovedSubmissionsToFeedIfNeeded()
             }
@@ -288,21 +307,32 @@ struct ChallengeDetailView: View {
                 .buttonStyle(.plain)
             } else if let entry = userEntry {
                 if hasApprovedSubmission {
-                    HStack(spacing: 8) {
-                        Image("checkwavy")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 16, height: 16)
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image("checkwavy")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 16, height: 16)
 
-                        Text("Approved")
-                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            Text(challenge.isRecurring ? "Completed This Cycle" : "Approved")
+                                .font(.system(size: 16, weight: .black, design: .rounded))
+                        }
+                        .foregroundStyle(.white)
+
+                        if challenge.isRecurring {
+                            Text("This cycle is locked. You can join again when the next cycle begins \(currentCycle.endDate.formatted(date: .abbreviated, time: .omitted)).")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(LColors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, challenge.isRecurring ? 12 : 14)
+                    .padding(.horizontal, 14)
                     .background(
-                        Capsule(style: .continuous)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .fill(LColors.glassSurface2)
                     )
                     .overlay(
@@ -378,12 +408,12 @@ struct ChallengeDetailView: View {
 
                     HStack(spacing: 14) {
                         statusRow(label: "Status", value: entry.status.displayName)
-                        statusRow(label: "Time Left", value: entry.displayDaysRemaining)
+                        statusRow(label: challenge.isRecurring ? "Cycle Left" : "Time Left", value: entry.displayDaysRemaining)
                     }
 
                     HStack(spacing: 14) {
-                        statusRow(label: "Started", value: entry.startDate.formatted(date: .abbreviated, time: .omitted))
-                        statusRow(label: "Ends", value: entry.endDate.formatted(date: .abbreviated, time: .omitted))
+                        statusRow(label: challenge.isRecurring ? "Cycle Start" : "Started", value: entry.startDate.formatted(date: .abbreviated, time: .omitted))
+                        statusRow(label: challenge.isRecurring ? "Cycle End" : "Ends", value: entry.endDate.formatted(date: .abbreviated, time: .omitted))
                     }
 
                     if entry.status == .approved {
@@ -470,9 +500,16 @@ struct ChallengeDetailView: View {
         let manager = challengeManager ?? ChallengeManager(modelContext: modelContext)
         challengeManager = manager
 
-        for submission in userSubmissions where submission.validationStatus == .approved {
+        for submission in currentUserChallengeSubmissions where submission.validationStatus == .approved {
             await manager.postApprovedSubmissionToFeedIfNeeded(submission, challenge: challenge)
         }
+    }
+
+    private func entryIsInCurrentCycle(_ entry: ChallengeEntry) -> Bool {
+        entry.cycleID == currentCycle.id || (
+            Calendar.current.isDate(entry.startDate, inSameDayAs: currentCycle.startDate) &&
+            Calendar.current.isDate(entry.endDate, inSameDayAs: currentCycle.endDate)
+        )
     }
 
     private func profile(for submission: ChallengeSubmission) -> ChallengeUserProfile? {

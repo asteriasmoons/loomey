@@ -17,6 +17,8 @@ final class ReadingChallenge {
     var durationDays: Int = 7
     var requirementText: String = ""
     var validationTypeRawValue: String = ChallengeValidationType.readingSession.rawValue
+    var recurrenceRawValue: String = ChallengeRecurrence.oneTime.rawValue
+    var cycleAnchorDate: Date?
 
     // Validation requirements
     var requiredBookCount: Int?
@@ -76,6 +78,8 @@ final class ReadingChallenge {
         requiredMinPages: Int? = nil,
         requiredMaxPages: Int? = nil,
         requiredDaysStreak: Int? = nil,
+        recurrence: ChallengeRecurrence = .oneTime,
+        cycleAnchorDate: Date? = nil,
         isFeatured: Bool = false,
         isWeekly: Bool = false,
         featuredStartDate: Date? = nil,
@@ -106,6 +110,8 @@ final class ReadingChallenge {
         self.requiredMinPages = requiredMinPages
         self.requiredMaxPages = requiredMaxPages
         self.requiredDaysStreak = requiredDaysStreak
+        self.recurrenceRawValue = (recurrence == .oneTime && isWeekly) ? ChallengeRecurrence.weekly.rawValue : recurrence.rawValue
+        self.cycleAnchorDate = cycleAnchorDate
         self.isFeatured = isFeatured
         self.isWeekly = isWeekly
         self.featuredStartDate = featuredStartDate
@@ -125,6 +131,21 @@ extension ReadingChallenge {
     var validationType: ChallengeValidationType {
         get { ChallengeValidationType(rawValue: validationTypeRawValue) ?? .readingSession }
         set { validationTypeRawValue = newValue.rawValue }
+    }
+
+    var recurrence: ChallengeRecurrence {
+        get {
+            let stored = ChallengeRecurrence(rawValue: recurrenceRawValue) ?? .oneTime
+            if stored == .oneTime && isWeekly {
+                return .weekly
+            }
+            return stored
+        }
+        set { recurrenceRawValue = newValue.rawValue }
+    }
+
+    var isRecurring: Bool {
+        recurrence != .oneTime
     }
 
     var requiredTags: [String] {
@@ -153,7 +174,65 @@ extension ReadingChallenge {
         "\(points) pts"
     }
 
+    func cycle(containing date: Date = Date(), calendar: Calendar = .current) -> ChallengeCycle {
+        let anchorDate = cycleAnchorDate ?? featuredStartDate ?? createdDate
+        let anchor = calendar.startOfDay(for: anchorDate)
+
+        guard isRecurring else {
+            let end = calendar.date(byAdding: .day, value: durationDays, to: anchor) ?? anchor
+            return ChallengeCycle(
+                id: "\(id.uuidString):one-time",
+                startDate: anchor,
+                endDate: end
+            )
+        }
+
+        let targetDate = max(calendar.startOfDay(for: date), anchor)
+        var start = anchor
+        var end = nextCycleEnd(after: start, calendar: calendar)
+
+        while targetDate >= end {
+            start = end
+            end = nextCycleEnd(after: start, calendar: calendar)
+        }
+
+        return ChallengeCycle(
+            id: "\(id.uuidString):\(Self.cycleKey(for: start, calendar: calendar))",
+            startDate: start,
+            endDate: end
+        )
+    }
+
+    func cycle(containingEntryStart date: Date, calendar: Calendar = .current) -> ChallengeCycle {
+        cycle(containing: date, calendar: calendar)
+    }
+
+    private func nextCycleEnd(after start: Date, calendar: Calendar) -> Date {
+        switch recurrence {
+        case .daily:
+            return calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        case .weekly:
+            return calendar.date(byAdding: .day, value: 7, to: start) ?? start
+        case .monthly:
+            return calendar.date(byAdding: .month, value: 1, to: start) ?? start
+        case .yearly:
+            return calendar.date(byAdding: .year, value: 1, to: start) ?? start
+        case .custom:
+            return calendar.date(byAdding: .day, value: max(durationDays, 1), to: start) ?? start
+        case .oneTime:
+            return calendar.date(byAdding: .day, value: durationDays, to: start) ?? start
+        }
+    }
+
     // MARK: - JSON Helpers
+
+    private static func cycleKey(for date: Date, calendar: Calendar) -> String {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        let year = components.year ?? 0
+        let month = String(format: "%02d", components.month ?? 1)
+        let day = String(format: "%02d", components.day ?? 1)
+        return "\(year)-\(month)-\(day)"
+    }
 
     private static func decodeStringArray(from storage: String) -> [String] {
         guard let data = storage.data(using: .utf8) else { return [] }
@@ -166,4 +245,10 @@ extension ReadingChallenge {
         else { return "[]" }
         return string
     }
+}
+
+struct ChallengeCycle: Equatable {
+    let id: String
+    let startDate: Date
+    let endDate: Date
 }

@@ -94,6 +94,30 @@ enum ChallengeValidationType: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Challenge Recurrence
+
+enum ChallengeRecurrence: String, Codable, CaseIterable, Identifiable {
+    case oneTime
+    case daily
+    case weekly
+    case monthly
+    case yearly
+    case custom
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .oneTime: return "One-Time"
+        case .daily: return "Daily"
+        case .weekly: return "Weekly"
+        case .monthly: return "Monthly"
+        case .yearly: return "Yearly"
+        case .custom: return "Recurring"
+        }
+    }
+}
+
 // MARK: - Challenge Submission Status
 
 enum ChallengeSubmissionStatus: String, Codable, CaseIterable, Identifiable {

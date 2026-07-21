@@ -42,11 +42,23 @@ final class ChallengeManager: ObservableObject {
     // MARK: - Join Challenge
 
     func joinChallenge(_ challenge: ReadingChallenge, userID: String) -> ChallengeEntry {
+        if let existingEntry = currentEntry(for: challenge, userID: userID) {
+            return existingEntry
+        }
+
+        let cycle = challenge.cycle()
+        let startDate = challenge.isRecurring ? cycle.startDate : Date()
+        let endDate = challenge.isRecurring
+            ? cycle.endDate
+            : Calendar.current.date(byAdding: .day, value: challenge.durationDays, to: startDate) ?? startDate
+
         let entry = ChallengeEntry(
             challengeID: challenge.id,
             userID: userID,
-            startDate: Date(),
-            durationDays: challenge.durationDays
+            startDate: startDate,
+            durationDays: challenge.durationDays,
+            endDate: endDate,
+            cycleID: challenge.isRecurring ? cycle.id : "\(challenge.id.uuidString):one-time"
         )
         modelContext.insert(entry)
         challenge.participantCount += 1
@@ -62,7 +74,11 @@ final class ChallengeManager: ObservableObject {
         submission: ChallengeSubmission
     ) async {
         guard entry.status != .approved, submission.validationStatus != .approved else {
-            lastValidationResult = .approved("This challenge has already been approved.")
+            lastValidationResult = .approved(
+                challenge.isRecurring
+                    ? "This challenge has already been approved for the current cycle."
+                    : "This challenge has already been approved."
+            )
             return
         }
 
@@ -294,6 +310,9 @@ final class ChallengeManager: ObservableObject {
             validationMessage: submission.validationMessage,
             submittedDate: submission.submittedDate,
             approvedDate: nil,
+            cycleID: submission.cycleID,
+            cycleStartDate: submission.cycleStartDate,
+            cycleEndDate: submission.cycleEndDate,
             postedToFeed: false,
             feedItemID: nil,
             likeCount: submission.likeCount,
@@ -318,7 +337,11 @@ final class ChallengeManager: ObservableObject {
     func fetchEntry(for challengeID: UUID, userID: String) -> ChallengeEntry? {
         let descriptor = FetchDescriptor<ChallengeEntry>()
         let entries = (try? modelContext.fetch(descriptor)) ?? []
-        return entries.first(where: { $0.challengeID == challengeID && $0.userID == userID })
+        let challenges = fetchAllChallenges()
+        guard let challenge = challenges.first(where: { $0.id == challengeID }) else {
+            return entries.first(where: { $0.challengeID == challengeID && $0.userID == userID })
+        }
+        return currentEntry(for: challenge, userID: userID, entries: entries)
     }
 
     func fetchSubmissions(for challengeID: UUID) -> [ChallengeSubmission] {
@@ -355,5 +378,130 @@ final class ChallengeManager: ObservableObject {
     func fetchChallenges(for category: ChallengeCategory) -> [ReadingChallenge] {
         let all = fetchAllChallenges()
         return all.filter { $0.category == category }
+    }
+
+    func currentEntry(
+        for challenge: ReadingChallenge,
+        userID: String,
+        entries existingEntries: [ChallengeEntry]? = nil
+    ) -> ChallengeEntry? {
+        let entries: [ChallengeEntry]
+        if let existingEntries {
+            entries = existingEntries
+        } else {
+            let descriptor = FetchDescriptor<ChallengeEntry>(
+                sortBy: [SortDescriptor(\ChallengeEntry.startDate, order: .reverse)]
+            )
+            entries = (try? modelContext.fetch(descriptor)) ?? []
+        }
+
+        let matchingEntries = entries.filter {
+            $0.challengeID == challenge.id && $0.userID == userID
+        }
+
+        guard challenge.isRecurring else {
+            return matchingEntries.first
+        }
+
+        let cycle = challenge.cycle()
+        return matchingEntries.first {
+            $0.cycleID == cycle.id || (
+                Calendar.current.isDate($0.startDate, inSameDayAs: cycle.startDate) &&
+                Calendar.current.isDate($0.endDate, inSameDayAs: cycle.endDate)
+            )
+        }
+    }
+
+    func backfillCycleMetadata() {
+        let challenges = fetchAllChallenges()
+        let challengeByID = Dictionary(uniqueKeysWithValues: challenges.map { ($0.id, $0) })
+
+        let entryDescriptor = FetchDescriptor<ChallengeEntry>()
+        let entries = (try? modelContext.fetch(entryDescriptor)) ?? []
+        let entryByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+
+        let submissionDescriptor = FetchDescriptor<ChallengeSubmission>()
+        let submissions = (try? modelContext.fetch(submissionDescriptor)) ?? []
+
+        var didChange = false
+
+        for challenge in challenges where challenge.isRecurring {
+            if challenge.recurrenceRawValue == ChallengeRecurrence.oneTime.rawValue {
+                challenge.recurrence = challenge.isWeekly ? .weekly : .custom
+                didChange = true
+            }
+
+            if challenge.cycleAnchorDate == nil {
+                challenge.cycleAnchorDate = challenge.featuredStartDate ?? challenge.createdDate
+                didChange = true
+            }
+        }
+
+        for entry in entries {
+            guard let challenge = challengeByID[entry.challengeID] else { continue }
+
+            if challenge.isRecurring {
+                let cycle = challenge.cycle(containingEntryStart: entry.startDate)
+                if entry.cycleID != cycle.id {
+                    entry.cycleID = cycle.id
+                    didChange = true
+                }
+                if entry.startDate != cycle.startDate {
+                    entry.startDate = cycle.startDate
+                    didChange = true
+                }
+                if entry.endDate != cycle.endDate {
+                    entry.endDate = cycle.endDate
+                    didChange = true
+                }
+            } else if entry.cycleID.isEmpty {
+                entry.cycleID = "\(challenge.id.uuidString):one-time"
+                didChange = true
+            }
+        }
+
+        for submission in submissions {
+            if let entry = entryByID[submission.entryID] {
+                if submission.cycleID != entry.cycleID {
+                    submission.cycleID = entry.cycleID
+                    didChange = true
+                }
+                if submission.cycleStartDate != entry.startDate {
+                    submission.cycleStartDate = entry.startDate
+                    didChange = true
+                }
+                if submission.cycleEndDate != entry.endDate {
+                    submission.cycleEndDate = entry.endDate
+                    didChange = true
+                }
+                continue
+            }
+
+            guard let challenge = challengeByID[submission.challengeID] else { continue }
+            let cycle = challenge.isRecurring
+                ? challenge.cycle(containing: submission.submittedDate)
+                : ChallengeCycle(
+                    id: "\(challenge.id.uuidString):one-time",
+                    startDate: submission.submittedDate,
+                    endDate: submission.submittedDate
+                )
+
+            if submission.cycleID != cycle.id {
+                submission.cycleID = cycle.id
+                didChange = true
+            }
+            if submission.cycleStartDate != cycle.startDate {
+                submission.cycleStartDate = cycle.startDate
+                didChange = true
+            }
+            if submission.cycleEndDate != cycle.endDate {
+                submission.cycleEndDate = cycle.endDate
+                didChange = true
+            }
+        }
+
+        if didChange {
+            try? modelContext.save()
+        }
     }
 }

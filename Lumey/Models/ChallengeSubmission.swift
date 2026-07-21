@@ -30,6 +30,9 @@ final class ChallengeSubmission {
     // Dates
     var submittedDate: Date = Date()
     var approvedDate: Date?
+    var cycleID: String = ""
+    var cycleStartDate: Date?
+    var cycleEndDate: Date?
 
     // Social
     var likeCount: Int = 0
@@ -53,7 +56,10 @@ final class ChallengeSubmission {
         linkedReviewIDs: [UUID] = [],
         linkedReadingListIDs: [UUID] = [],
         submissionNote: String = "",
-        proofSummary: String = ""
+        proofSummary: String = "",
+        cycleID: String = "",
+        cycleStartDate: Date? = nil,
+        cycleEndDate: Date? = nil
     ) {
         self.id = UUID()
         self.challengeID = challengeID
@@ -68,6 +74,9 @@ final class ChallengeSubmission {
         self.submissionNote = submissionNote
         self.proofSummary = proofSummary
         self.submittedDate = Date()
+        self.cycleID = cycleID
+        self.cycleStartDate = cycleStartDate
+        self.cycleEndDate = cycleEndDate
     }
 }
 
