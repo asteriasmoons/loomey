@@ -179,6 +179,7 @@ struct ReadingHomeView: View {
                         writingStatsSection
                         readingMomentumSection
                         goalsSection
+                        HomeRecommendationCollectionsSection()
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 24)
@@ -1005,6 +1006,9 @@ private extension View {
             BookReview.self,
             ReadingStats.self,
             ReadingGoals.self,
-            ReadingSession.self
+            ReadingSession.self,
+            AuthUser.self,
+            ChallengeEntry.self,
+            ChallengeSubmission.self
         ], inMemory: true)
 }
