@@ -43,8 +43,10 @@ struct RecommendedBookDetailSheet: View {
                             errorCard(errorMessage)
                         }
 
-                        summaryCard
-                        metadataSections
+                        if detail != nil {
+                            summaryCard
+                            metadataSections
+                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 18)
@@ -97,7 +99,9 @@ struct RecommendedBookDetailSheet: View {
 
             Spacer(minLength: 0)
 
-            addToLibraryButton(alreadyAdded: alreadyAdded)
+            if detail != nil || alreadyAdded {
+                addToLibraryButton(alreadyAdded: alreadyAdded)
+            }
 
             Button {
                 dismiss()
@@ -240,7 +244,7 @@ struct RecommendedBookDetailSheet: View {
                     .font(.system(size: 18, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
 
-                Text(displayedDetail?.summary ?? book.summary)
+                Text(displayedDetail?.summary ?? "")
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.80))
                     .lineSpacing(4)
@@ -455,7 +459,7 @@ struct RecommendedBookDetailSheet: View {
     }
 
     private func addToLibrary() {
-        guard !isBookInLibrary else { return }
+        guard !isBookInLibrary, detail != nil else { return }
 
         let currentDetail = displayedDetail
         let bookTitle = currentDetail?.title ?? book.title
