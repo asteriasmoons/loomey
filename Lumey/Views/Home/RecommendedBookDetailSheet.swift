@@ -37,16 +37,17 @@ struct RecommendedBookDetailSheet: View {
                     VStack(alignment: .leading, spacing: 16) {
                         hero
 
-                        if isLoading && detail == nil {
-                            loadingCard
-                        } else if let errorMessage, detail == nil {
-                            errorCard(errorMessage)
+                        if detail == nil {
+                            if isLoading {
+                                summaryLoadingCard
+                            } else if let errorMessage {
+                                errorCard(errorMessage)
+                            }
+                        } else {
+                            summaryCard
                         }
 
-                        if detail != nil {
-                            summaryCard
-                            metadataSections
-                        }
+                        metadataSections
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 18)
@@ -192,9 +193,9 @@ struct RecommendedBookDetailSheet: View {
             }
 
             let quickFacts = [
-                displayedDetail?.publicationYear.map(String.init),
-                displayedDetail?.pages.map { "\($0) pages" },
-                displayedDetail?.rating.map { String(format: "%.1f stars", $0) },
+                (displayedDetail?.publicationYear ?? book.releaseYear).map(String.init),
+                (displayedDetail?.pages ?? book.pages).map { "\($0) pages" },
+                (displayedDetail?.rating ?? book.rating).map { String(format: "%.1f stars", $0) },
                 displayedDetail?.tone,
                 displayedDetail?.pacing
             ].compactMap { $0 }.filter { !$0.isEmpty }
@@ -205,17 +206,17 @@ struct RecommendedBookDetailSheet: View {
         }
     }
 
-    private var loadingCard: some View {
+    private var summaryLoadingCard: some View {
         GlassCard {
             HStack(spacing: 14) {
                 LumeyDottedGradientSpinner(size: 40)
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Loading book details")
+                    Text("Writing summary")
                         .font(.system(size: 16, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
 
-                    Text("Lumey is enriching this recommendation.")
+                    Text("Lumey is writing the recommendation detail copy.")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(LColors.textSecondary)
                 }
