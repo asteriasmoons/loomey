@@ -52,21 +52,11 @@ struct HomeRecommendationCollectionsSection: View {
         authUsers.first
     }
 
+    /// Changes every 3 days so shelves refresh on the same cadence as the backend cache TTL.
     private var refreshKey: String {
-        let latestBookUpdate = activeBooks.map(\.lastUpdated).max()?.timeIntervalSince1970 ?? 0
-        let latestGoalUpdate = goals.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0
-        let latestStatsUpdate = readingStats?.updatedAt.timeIntervalSince1970 ?? 0
-
-        return [
-            "\(activeBooks.count)",
-            "\(sessions.count)",
-            "\(goals.count)",
-            "\(challengeEntries.count)",
-            "\(challengeSubmissions.count)",
-            "\(Int(latestBookUpdate))",
-            "\(Int(latestGoalUpdate))",
-            "\(Int(latestStatsUpdate))"
-        ].joined(separator: "-")
+        let threeDays: TimeInterval = 3 * 24 * 60 * 60
+        let epoch = Int(Date().timeIntervalSince1970 / threeDays)
+        return "\(epoch)"
     }
 
     var body: some View {

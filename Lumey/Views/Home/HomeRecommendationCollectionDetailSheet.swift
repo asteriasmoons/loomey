@@ -18,6 +18,7 @@ struct HomeRecommendationCollectionDetailSheet: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedRecommendedBook: LumeyRecommendationCollectionBook?
+    @State private var fetchAttempt = 0
 
     private var displayedCollection: LumeyRecommendationCollection {
         loadedCollection ?? collection
@@ -41,10 +42,7 @@ struct HomeRecommendationCollectionDetailSheet: View {
                         if isLoading && books.isEmpty {
                             loadingCard
                         } else if let errorMessage, books.isEmpty {
-                            emptyCard(
-                                title: "Shelf unavailable",
-                                message: errorMessage
-                            )
+                            retryCard(message: errorMessage)
                         } else if books.isEmpty {
                             emptyCard(
                                 title: "No books yet",
@@ -64,7 +62,7 @@ struct HomeRecommendationCollectionDetailSheet: View {
                 }
             }
         }
-        .task(id: collection.id) {
+        .task(id: "\(collection.id)-\(fetchAttempt)") {
             await fetchCollection()
         }
 
@@ -146,6 +144,36 @@ struct HomeRecommendationCollectionDetailSheet: View {
                 }
 
                 Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func retryCard(message: String) -> some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Shelf unavailable")
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+
+                    Text(message)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(LColors.textSecondary)
+                }
+
+                Button {
+                    errorMessage = nil
+                    loadedCollection = nil
+                    fetchAttempt += 1
+                } label: {
+                    Text("Try again")
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(LGradients.header, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -291,7 +319,7 @@ struct HomeRecommendationCollectionDetailSheet: View {
 
     @MainActor
     private func fetchCollection() async {
-        guard loadedCollection == nil else { return }
+        guard loadedCollection == nil, !isLoading else { return }
 
         isLoading = true
         errorMessage = nil
